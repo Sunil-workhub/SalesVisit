@@ -1,8 +1,15 @@
 import React, { Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import menuConfig from "./config/menuConfig";
 import AppLayout from "./components/layout/AppLayout";
+import Login from "./pages/auth/Login";
 
 function Loader() {
   return (
@@ -17,10 +24,16 @@ function Loader() {
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return <Loader />;
 
-  return user ? children : <Navigate to="/login" replace />;
+  const sessionUser = sessionStorage.getItem("user");
+  if (!user && !sessionUser) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  return children;
 }
 
 function PublicRoute({ children }) {
@@ -28,12 +41,22 @@ function PublicRoute({ children }) {
 
   if (loading) return <Loader />;
 
-  return user ? <Navigate to="/" replace /> : children;
+  const sessionUser = sessionStorage.getItem("user");
+  return user || sessionUser ? <Navigate to="/" replace /> : children;
 }
 
 function AppRoutes() {
   return (
     <Routes>
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        }
+      />
+
       {menuConfig.map((item) => {
         const Component = item.component;
         return (
@@ -41,11 +64,11 @@ function AppRoutes() {
             key={item.path}
             path={item.path}
             element={
-              // <ProtectedRoute>
-              <AppLayout>
-                <Component />
-              </AppLayout>
-              // </ProtectedRoute>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Component />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
         );

@@ -94,6 +94,7 @@ const OrgDashboardPage = () => {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [dashboardData, setDashboardData] = useState(DEFAULT_DASHBOARD);
+  console.log(dashboardData, "dashboardData");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -194,7 +195,14 @@ const OrgDashboardPage = () => {
         empId: empId,
       });
 
-      const apiData = response?.data?.data || {};
+      const apiData =
+        response?.data?.data?.monthly || response?.data?.data?.ytd
+          ? response.data.data
+          : response?.data?.monthly || response?.data?.ytd
+            ? response.data
+            : response?.monthly || response?.ytd
+              ? response
+              : {};
       setDashboardData(normalizeDashboardData(apiData));
     } catch (err) {
       console.error("Error loading organization dashboard:", err);

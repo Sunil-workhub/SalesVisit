@@ -218,6 +218,7 @@ function AppLayout({ children }) {
 
   const handleSignOut = async () => {
     await signOut();
+    navigate("/login", { replace: true });
   };
 
   const isActiveRoute = (path) => {

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import menuConfig from "../config/menuConfig";
 import Login from "../pages/auth/Login";
+import AppLayout from "../components/layout/AppLayout";
 
 // Simple spinner for Suspense fallback
 const PageLoader = () => (
@@ -47,7 +48,9 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <Suspense fallback={<PageLoader />}>
-                  <Component />
+                  <AppLayout>
+                    <Component />
+                  </AppLayout>
                 </Suspense>
               </ProtectedRoute>
             }

@@ -48,6 +48,7 @@ function PublicRoute({ children }) {
 function AppRoutes() {
   return (
     <Routes>
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route
         path="/login"
         element={

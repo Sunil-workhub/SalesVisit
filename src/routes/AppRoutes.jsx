@@ -1,72 +1,61 @@
 import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import menuConfig from "../config/menuConfig";
-import Layout from "../pages/layout/Layout";
+import Login from "../pages/auth/Login";
 
-import RedirectHandler from "./RedirectHandler";
-import LoginPage from "../pages/auth/LoginPage";
+// Simple spinner for Suspense fallback
+const PageLoader = () => (
+  <div className="min-h-screen bg-[#f6f8fb] flex items-center justify-center">
+    <div className="h-8 w-8 rounded-full border-4 border-[#2f61d5] border-t-transparent animate-spin" />
+  </div>
+);
+
+// Guard: redirect to /login if not authenticated
+function ProtectedRoute({ children }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+// Guard: redirect to /dashboard if already logged in
+function PublicRoute({ children }) {
+  const { user } = useAuth();
+  if (user) return <Navigate to="/dashboard" replace />;
+  return children;
+}
 
 const AppRoutes = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* 🔓 Public Route (no auth) */}
-
-        {/* <Route
-          path="/RFQ-vendor"
-          element={
-            <Suspense
-              fallback={
-                <div>
-                  <RedirectHandler />
-                </div>
-              }
-            >
-              <RFQVendorResponsePage />
-            </Suspense>
-          }
-        /> */}
+        {/* Public */}
         <Route
-          path="/helpdesk-login"
+          path="/login"
           element={
-            <Suspense
-              fallback={
-                <div>
-                  <RedirectHandler />
-                </div>
-              }
-            >
-              <LoginPage />
-            </Suspense>
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
           }
         />
 
-        {/* 🔒 Protected Routes (auth required) */}
-        <Route
-          element={
-            <>
-              <Layout />
-            </>
-          }
-        >
-          {menuConfig.map(({ path, component: Component }) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <Suspense
-                  fallback={
-                    <div>
-                      <RedirectHandler />
-                    </div>
-                  }
-                >
+        {/* Protected */}
+        {menuConfig.map(({ path, component: Component }) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<PageLoader />}>
                   <Component />
                 </Suspense>
-              }
-            />
-          ))}
-        </Route>
+              </ProtectedRoute>
+            }
+          />
+        ))}
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );

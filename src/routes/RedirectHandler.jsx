@@ -18,7 +18,7 @@ const RedirectHandler = () => {
   useEffect(() => {
     const user = sessionStorage.getItem("user");
     if (!user) {
-      navigate("/helpdesk-login", { replace: true });
+      navigate("/login", { replace: true });
     }
   }, [navigate]);
 

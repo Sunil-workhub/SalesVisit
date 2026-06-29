@@ -1,14 +1,13 @@
 import React, {
   createContext,
   useContext,
-  useEffect,
-  useMemo,
   useState,
+  useMemo,
+  useCallback,
 } from "react";
 import staticUsers from "../data/staticUsers";
 
 const AuthContext = createContext(null);
-
 const PASSWORD = "password@123";
 
 const getStoredUser = () => {
@@ -42,16 +41,11 @@ const mapUserForSession = (sourceUser) => {
 };
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Solved hydration delay: Directly compute state from sessionStorage on mount
+  const [user, setUser] = useState(() => getStoredUser());
+  const [loading] = useState(false);
 
-  useEffect(() => {
-    const existingUser = getStoredUser();
-    setUser(existingUser);
-    setLoading(false);
-  }, []);
-
-  const signIn = async ({ email, password }) => {
+  const signIn = useCallback(async ({ email, password }) => {
     const normalizedEmail = (email || "").trim().toLowerCase();
 
     const matchedUser = staticUsers.find(
@@ -73,12 +67,12 @@ export function AuthProvider({ children }) {
       success: true,
       user: sessionUser,
     };
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     sessionStorage.removeItem("user");
     setUser(null);
-  };
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -87,12 +81,16 @@ export function AuthProvider({ children }) {
       signIn,
       signOut,
     }),
-    [user, loading],
+    [user, loading, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 }

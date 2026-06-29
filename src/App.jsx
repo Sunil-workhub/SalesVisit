@@ -47,37 +47,35 @@ function PublicRoute({ children }) {
 
 function AppRoutes() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        }
+      />
 
-        {menuConfig.map((item) => {
-          const Component = item.component;
-          return (
-            <Route
-              key={item.path}
-              path={item.path}
-              element={
-                <ProtectedRoute>
-                  <AppLayout>
-                    <Component />
-                  </AppLayout>
-                </ProtectedRoute>
-              }
-            />
-          );
-        })}
+      {menuConfig.map((item) => {
+        const Component = item.component;
+        return (
+          <Route
+            key={item.path}
+            path={item.path}
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Component />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+        );
+      })}
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

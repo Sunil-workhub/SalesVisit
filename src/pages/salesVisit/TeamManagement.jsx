@@ -17,6 +17,7 @@ import {
   RefreshCw,
   User,
   Briefcase,
+  Pencil, // Added for Edit Action UI
 } from "lucide-react";
 import SalesVisitService from "../../services/salesVisit/SalesVisitService";
 
@@ -60,8 +61,9 @@ const TeamManagement = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
 
-  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [newUserForm, setNewUserForm] = useState(DEFAULT_NEW_USER);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [userForm, setUserForm] = useState(DEFAULT_NEW_USER);
+  const [editingUserId, setEditingUserId] = useState(null); // Track if updating vs creating
 
   useEffect(() => {
     loadUsers();
@@ -112,14 +114,32 @@ const TeamManagement = () => {
     }
   };
 
-  const handleCreateUser = async () => {
+  // Triggered when clicking Edit on a target user block
+  const handleEditClick = (user) => {
+    setError("");
+    setSuccess("");
+    setEditingUserId(user.id);
+    setUserForm({
+      name: user.name,
+      email: user.email,
+      password: "●●●●●●", // Mask password field during updates
+      role: user.role,
+      reportingManagerId: user.reportingManagerId || "",
+      region: user.region || "",
+      dept: user.dept || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveUser = async () => {
+    // Password requirement validation is bypassed conditionally during edit mode
     if (
-      !newUserForm.name.trim() ||
-      !newUserForm.email.trim() ||
-      !newUserForm.password.trim() ||
-      !newUserForm.role ||
-      !newUserForm.region ||
-      !newUserForm.dept
+      !userForm.name.trim() ||
+      !userForm.email.trim() ||
+      (!editingUserId && !userForm.password.trim()) ||
+      !userForm.role ||
+      !userForm.region ||
+      !userForm.dept
     ) {
       setError("Please fill in all required fields.");
       return;
@@ -131,24 +151,36 @@ const TeamManagement = () => {
       setSuccess("");
 
       const payload = {
-        name: newUserForm.name,
-        email: newUserForm.email,
-        password: newUserForm.password,
-        role: newUserForm.role,
-        reportingManagerId: newUserForm.reportingManagerId || null,
-        region: newUserForm.region,
-        dept: newUserForm.dept,
+        name: userForm.name,
+        email: userForm.email,
+        role: userForm.role,
+        reportingManagerId: userForm.reportingManagerId || null,
+        region: userForm.region,
+        dept: userForm.dept,
       };
 
-      await SalesVisitService.createTeamUser(payload);
+      if (editingUserId) {
+        // Mode: Update Existing User
+        await SalesVisitService.updateTeamUser(editingUserId, payload);
+        setSuccess("User data updated successfully.");
+      } else {
+        // Mode: Create New User
+        payload.password = userForm.password;
+        await SalesVisitService.createTeamUser(payload);
+        setSuccess("User created successfully.");
+      }
 
-      setSuccess("User created successfully.");
-      setNewUserForm(DEFAULT_NEW_USER);
-      setIsAddUserOpen(false);
+      setUserForm(DEFAULT_NEW_USER);
+      setEditingUserId(null);
+      setIsModalOpen(false);
       await loadUsers();
     } catch (err) {
-      console.error("Error creating user:", err);
-      setError("Failed to create user.");
+      console.error("Error saving user data:", err);
+      setError(
+        editingUserId
+          ? "Failed to update user parameters."
+          : "Failed to create user.",
+      );
     } finally {
       setSubmitLoading(false);
     }
@@ -258,8 +290,8 @@ const TeamManagement = () => {
                   Team Management
                 </h1>
                 <p className="mt-2 text-sm md:text-base text-slate-500">
-                  Create users, assign reporting structure, and manage region
-                  and department mapping.
+                  Create and modify users, assign reporting structure, and
+                  manage region and department mapping configurations.
                 </p>
               </div>
 
@@ -279,7 +311,9 @@ const TeamManagement = () => {
                   onClick={() => {
                     setError("");
                     setSuccess("");
-                    setIsAddUserOpen(true);
+                    setEditingUserId(null);
+                    setUserForm(DEFAULT_NEW_USER);
+                    setIsModalOpen(true);
                   }}
                   className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-sm hover:bg-slate-800"
                 >
@@ -421,7 +455,7 @@ const TeamManagement = () => {
                 {filteredUsers.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+                    className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow relative group"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
@@ -440,13 +474,23 @@ const TeamManagement = () => {
                         </div>
                       </div>
 
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(
-                          item,
-                        )}`}
-                      >
-                        {getStatusLabel(item)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {/* New Edit Action Trigger Component */}
+                        <button
+                          onClick={() => handleEditClick(item)}
+                          className="p-2 rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
+                          title="Edit User Profile"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(
+                            item,
+                          )}`}
+                        >
+                          {getStatusLabel(item)}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -519,24 +563,26 @@ const TeamManagement = () => {
           </div>
         </div>
 
-        {isAddUserOpen ? (
+        {isModalOpen ? (
           <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] p-4 flex items-center justify-center">
             <div className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white shadow-2xl overflow-hidden">
               <div className="border-b border-slate-200 px-6 py-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                      Create New User
+                      {editingUserId ? "Edit User Profile" : "Create New User"}
                     </h3>
                     <p className="text-sm text-slate-500 mt-1">
-                      Add user details, reporting structure, region, and
-                      department.
+                      {editingUserId
+                        ? "Modify explicit user access parameters, region properties, and hierarchy positioning structure."
+                        : "Add user details, reporting structure, region, and department configurations."}
                     </p>
                   </div>
                   <button
                     onClick={() => {
-                      setIsAddUserOpen(false);
-                      setNewUserForm(DEFAULT_NEW_USER);
+                      setIsModalOpen(false);
+                      setUserForm(DEFAULT_NEW_USER);
+                      setEditingUserId(null);
                       setError("");
                     }}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
@@ -551,9 +597,9 @@ const TeamManagement = () => {
                   <FormField label="Full Name *" icon={User}>
                     <input
                       type="text"
-                      value={newUserForm.name}
+                      value={userForm.name}
                       onChange={(e) =>
-                        setNewUserForm({ ...newUserForm, name: e.target.value })
+                        setUserForm({ ...userForm, name: e.target.value })
                       }
                       placeholder="Enter full name"
                       className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
@@ -563,10 +609,10 @@ const TeamManagement = () => {
                   <FormField label="Email Address *" icon={Mail}>
                     <input
                       type="email"
-                      value={newUserForm.email}
+                      value={userForm.email}
                       onChange={(e) =>
-                        setNewUserForm({
-                          ...newUserForm,
+                        setUserForm({
+                          ...userForm,
                           email: e.target.value,
                         })
                       }
@@ -575,26 +621,38 @@ const TeamManagement = () => {
                     />
                   </FormField>
 
-                  <FormField label="Password *" icon={Lock}>
-                    <input
-                      type="password"
-                      value={newUserForm.password}
-                      onChange={(e) =>
-                        setNewUserForm({
-                          ...newUserForm,
-                          password: e.target.value,
-                        })
-                      }
-                      placeholder="Enter password"
-                      className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                    />
-                  </FormField>
+                  {/* Hide or disable password parameter input fields if managing modifications */}
+                  {!editingUserId ? (
+                    <FormField label="Password *" icon={Lock}>
+                      <input
+                        type="password"
+                        value={userForm.password}
+                        onChange={(e) =>
+                          setUserForm({
+                            ...userForm,
+                            password: e.target.value,
+                          })
+                        }
+                        placeholder="Enter password"
+                        className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                      />
+                    </FormField>
+                  ) : (
+                    <FormField label="Password" icon={Lock}>
+                      <input
+                        type="text"
+                        disabled
+                        value={userForm.password}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-400 cursor-not-allowed outline-none"
+                      />
+                    </FormField>
+                  )}
 
                   <FormField label="Role *" icon={Shield}>
                     <select
-                      value={newUserForm.role}
+                      value={userForm.role}
                       onChange={(e) =>
-                        setNewUserForm({ ...newUserForm, role: e.target.value })
+                        setUserForm({ ...userForm, role: e.target.value })
                       }
                       className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                     >
@@ -608,30 +666,33 @@ const TeamManagement = () => {
 
                   <FormField label="Reporting Person" icon={Network}>
                     <select
-                      value={newUserForm.reportingManagerId}
+                      value={userForm.reportingManagerId}
                       onChange={(e) =>
-                        setNewUserForm({
-                          ...newUserForm,
+                        setUserForm({
+                          ...userForm,
                           reportingManagerId: e.target.value,
                         })
                       }
                       className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                     >
                       <option value="">Select reporting person</option>
-                      {approvedUsers.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} - {getRoleLabel(item.role)}
-                        </option>
-                      ))}
+                      {approvedUsers
+                        // Prevent user mapping themselves as their own Reporting Manager during editing context
+                        .filter((u) => u.id !== editingUserId)
+                        .map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} - {getRoleLabel(item.role)}
+                          </option>
+                        ))}
                     </select>
                   </FormField>
 
-                  <FormField label="Region" icon={Globe2}>
+                  <FormField label="Region *" icon={Globe2}>
                     <select
-                      value={newUserForm.region}
+                      value={userForm.region}
                       onChange={(e) =>
-                        setNewUserForm({
-                          ...newUserForm,
+                        setUserForm({
+                          ...userForm,
                           region: e.target.value,
                         })
                       }
@@ -649,10 +710,10 @@ const TeamManagement = () => {
                   <div className="md:col-span-2">
                     <FormField label="Department *" icon={Building2}>
                       <select
-                        value={newUserForm.dept}
+                        value={userForm.dept}
                         onChange={(e) =>
-                          setNewUserForm({
-                            ...newUserForm,
+                          setUserForm({
+                            ...userForm,
                             dept: e.target.value,
                           })
                         }
@@ -672,8 +733,9 @@ const TeamManagement = () => {
                 <div className="mt-6 flex justify-end gap-3">
                   <button
                     onClick={() => {
-                      setIsAddUserOpen(false);
-                      setNewUserForm(DEFAULT_NEW_USER);
+                      setIsModalOpen(false);
+                      setUserForm(DEFAULT_NEW_USER);
+                      setEditingUserId(null);
                       setError("");
                     }}
                     className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -682,12 +744,16 @@ const TeamManagement = () => {
                   </button>
 
                   <button
-                    onClick={handleCreateUser}
+                    onClick={handleSaveUser}
                     disabled={submitLoading}
                     className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
                   >
                     <UserPlus className="h-4 w-4" />
-                    {submitLoading ? "Creating..." : "Create User"}
+                    {submitLoading
+                      ? "Saving..."
+                      : editingUserId
+                        ? "Save Changes"
+                        : "Create User"}
                   </button>
                 </div>
               </div>

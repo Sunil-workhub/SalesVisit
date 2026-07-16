@@ -13,8 +13,22 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  CalendarDays,
+  Briefcase,
+  Target,
+  Building2,
+  ClipboardList,
 } from "lucide-react";
 import SalesVisitService from "../../services/salesVisit/SalesVisitService";
+
+const VISIT_TYPE_OPTIONS = [
+  { value: "BD_VISIT", label: "BD Visit" },
+  { value: "ABP_VISIT", label: "ABP Visit" },
+  { value: "ONGOING_DEAL", label: "Ongoing Deal" },
+  { value: "KEY_ACCOUNT", label: "Key Account" },
+  { value: "OFFICE", label: "Office" },
+  { value: "LEAVE", label: "Leave" },
+];
 
 const MonthlyActual = () => {
   const sessionUser = JSON.parse(sessionStorage.getItem("user") || "{}");
@@ -148,9 +162,12 @@ const MonthlyActual = () => {
     }
 
     if (filters.visitType) {
-      filtered = filtered.filter(
-        (visit) => visit.visitType === filters.visitType,
-      );
+      filtered = filtered.filter((visit) => {
+        const types = String(visit.visitType)
+          .split(",")
+          .map((t) => t.trim());
+        return types.includes(filters.visitType);
+      });
     }
 
     if (filters.search) {
@@ -185,11 +202,9 @@ const MonthlyActual = () => {
 
       const response = await SalesVisitService.updateVisitStatus(payload);
 
-      if (
-        response?.data?.status_Code !== 200 &&
-        response?.data?.Status_Code !== 200
-      ) {
+      if (response?.status_Code !== 200 && response?.Status_Code !== 200) {
         alert("Failed to update visit status");
+        console.log("response", response, response.data);
         return;
       }
 
@@ -238,7 +253,9 @@ const MonthlyActual = () => {
         customerName: alternateVisit.customerName,
         location: alternateVisit.location,
         industrialArea: alternateVisit.industrialArea,
-        visitType: alternateVisit.visitType,
+        visitType: Array.isArray(alternateVisit.visitTypes)
+          ? alternateVisit.visitTypes.join(",")
+          : alternateVisit.visitType,
         plannedDate: alternateVisit.plannedDate,
         actualDate: currentDateTime,
         status: "completed",
@@ -335,6 +352,15 @@ const MonthlyActual = () => {
     });
   };
 
+  const countVisitsByType = (visitList, type) => {
+    return visitList.filter((v) => {
+      const types = String(v.visitType)
+        .split(",")
+        .map((t) => t.trim());
+      return types.includes(type);
+    }).length;
+  };
+
   const groupedVisits = useMemo(
     () => groupVisitsByDate(filteredVisits),
     [filteredVisits],
@@ -345,29 +371,14 @@ const MonthlyActual = () => {
     [groupedVisits],
   );
 
-  const totalVisitsCount =
-    filteredVisits.filter(
-      (v) =>
-        v.status === "completed" && !["OFFICE", "LEAVE"].includes(v.visitType),
-    ).length +
-    filteredVisits.filter(
-      (v) =>
-        v.isAlternate === true && !["OFFICE", "LEAVE"].includes(v.visitType),
-    ).length;
-
-  const regularCompletedCount = filteredVisits.filter(
-    (v) =>
-      v.status === "completed" &&
-      !v.isAlternate &&
-      !["OFFICE", "LEAVE"].includes(v.visitType),
-  ).length;
-
-  const missedCount = filteredVisits.filter(
-    (v) => v.status === "missed" && !["OFFICE", "LEAVE"].includes(v.visitType),
-  ).length;
-
+  // Counter metric constants matching the dynamic layout targets
+  const totalVisitsCount = filteredVisits.length;
+  const bdVisitsCount = countVisitsByType(filteredVisits, "BD_VISIT");
+  const abpVisitsCount = countVisitsByType(filteredVisits, "ABP_VISIT");
+  const keyAccountsCount = countVisitsByType(filteredVisits, "KEY_ACCOUNT");
+  const ongoingDealsCount = countVisitsByType(filteredVisits, "ONGOING_DEAL");
   const alternateCount = filteredVisits.filter(
-    (v) => v.isAlternate === true && !["OFFICE", "LEAVE"].includes(v.visitType),
+    (v) => v.isAlternate === true,
   ).length;
 
   return (
@@ -394,7 +405,7 @@ const MonthlyActual = () => {
             </h2>
             <p className="text-sm text-gray-500">
               {totalVisitsCount} total visit{totalVisitsCount !== 1 ? "s" : ""}{" "}
-              completed
+              recorded
             </p>
           </div>
 
@@ -406,35 +417,47 @@ const MonthlyActual = () => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-blue-50 p-4 rounded-lg text-center border border-blue-200">
-            <p className="text-2xl font-bold text-blue-600">
-              {totalVisitsCount}
-            </p>
-            <p className="text-sm text-blue-700">Total Visits</p>
-          </div>
-
-          <div className="bg-green-50 p-4 rounded-lg text-center border border-green-200">
-            <p className="text-2xl font-bold text-green-600">
-              {regularCompletedCount}
-            </p>
-            <p className="text-sm text-green-700">Regular Completed</p>
-          </div>
-
-          <div className="bg-red-50 p-4 rounded-lg text-center border border-red-200">
-            <p className="text-2xl font-bold text-red-600">{missedCount}</p>
-            <p className="text-sm text-red-700">Missed</p>
-          </div>
-
-          <div className="bg-purple-50 p-4 rounded-lg text-center border border-purple-200">
-            <p className="text-2xl font-bold text-purple-600">
-              {alternateCount}
-            </p>
-            <p className="text-sm text-purple-700">Alternate</p>
-          </div>
+        {/* Updated Summary Cards Section matching Monthly Plan layout */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+          <StatCard
+            icon={CalendarDays}
+            tone="blue"
+            value={totalVisitsCount}
+            label="Total Visits"
+          />
+          <StatCard
+            icon={Briefcase}
+            tone="emerald"
+            value={bdVisitsCount}
+            label="BD Visits"
+          />
+          <StatCard
+            icon={Target}
+            tone="violet"
+            value={abpVisitsCount}
+            label="ABP Visits"
+          />
+          <StatCard
+            icon={Building2}
+            tone="amber"
+            value={keyAccountsCount}
+            label="Key Accounts"
+          />
+          <StatCard
+            icon={ClipboardList}
+            tone="orange"
+            value={ongoingDealsCount}
+            label="Ongoing Deals"
+          />
+          <StatCard
+            icon={RotateCcw}
+            tone="purple"
+            value={alternateCount}
+            label="Alternate/Additional"
+          />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 checked-layout">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Search
@@ -558,6 +581,68 @@ const MonthlyActual = () => {
   );
 };
 
+// Reusable StatCard layout component matching structure from plan pages
+const StatCard = ({ icon: Icon, tone = "blue", value, label }) => {
+  const toneMap = {
+    blue: {
+      wrap: "bg-blue-50 border-blue-200",
+      icon: "bg-blue-100 text-blue-700",
+      value: "text-blue-700",
+      label: "text-blue-700/80",
+    },
+    emerald: {
+      wrap: "bg-emerald-50 border-emerald-200",
+      icon: "bg-emerald-100 text-emerald-700",
+      value: "text-emerald-700",
+      label: "text-emerald-700/80",
+    },
+    violet: {
+      wrap: "bg-violet-50 border-violet-200",
+      icon: "bg-violet-100 text-violet-700",
+      value: "text-violet-700",
+      label: "text-violet-700/80",
+    },
+    amber: {
+      wrap: "bg-amber-50 border-amber-200",
+      icon: "bg-amber-100 text-amber-700",
+      value: "text-amber-700",
+      label: "text-amber-700/80",
+    },
+    orange: {
+      wrap: "bg-orange-50 border-orange-200",
+      icon: "bg-orange-100 text-orange-700",
+      value: "text-orange-700",
+      label: "text-orange-700/80",
+    },
+    purple: {
+      wrap: "bg-purple-50 border-purple-200",
+      icon: "bg-purple-100 text-purple-700",
+      value: "text-purple-700",
+      label: "text-purple-700/80",
+    },
+  };
+
+  const styles = toneMap[tone] || toneMap.blue;
+
+  return (
+    <div className={`rounded-[22px] border p-4 shadow-sm ${styles.wrap}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className={`text-2xl font-bold tracking-tight ${styles.value}`}>
+            {value}
+          </p>
+          <p className={`mt-1 text-xs font-medium ${styles.label}`}>{label}</p>
+        </div>
+        {Icon && (
+          <div className={`rounded-xl p-2.5 ${styles.icon}`}>
+            <Icon className="h-4 w-4" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const DayCard = ({ date, visits, onConfirm, onAddAlternate }) => {
   const getAlternateBadgeInfo = (visit) => {
     if (!visit.isAlternate || !visit.originalVisitId) return null;
@@ -585,7 +670,8 @@ const DayCard = ({ date, visits, onConfirm, onAddAlternate }) => {
   };
 
   const getVisitTypeColor = (type) => {
-    switch (type) {
+    const mainType = String(type).split(",")[0];
+    switch (mainType) {
       case "BD_VISIT":
         return "bg-blue-50 text-blue-700 border-blue-200";
       case "ABP_VISIT":
@@ -604,22 +690,28 @@ const DayCard = ({ date, visits, onConfirm, onAddAlternate }) => {
   };
 
   const getVisitTypeLabel = (type) => {
-    switch (type) {
-      case "BD_VISIT":
-        return "BD Visit";
-      case "ABP_VISIT":
-        return "ABP Visit";
-      case "ONGOING_DEAL":
-        return "Ongoing Deal";
-      case "KEY_ACCOUNT":
-        return "Key Account";
-      case "OFFICE":
-        return "Office";
-      case "LEAVE":
-        return "Leave";
-      default:
-        return type;
-    }
+    if (!type) return "";
+    return String(type)
+      .split(",")
+      .map((t) => {
+        switch (t.trim()) {
+          case "BD_VISIT":
+            return "BD Visit";
+          case "ABP_VISIT":
+            return "ABP Visit";
+          case "ONGOING_DEAL":
+            return "Ongoing Deal";
+          case "KEY_ACCOUNT":
+            return "Key Account";
+          case "OFFICE":
+            return "Office";
+          case "LEAVE":
+            return "Leave";
+          default:
+            return t;
+        }
+      })
+      .join(", ");
   };
 
   const getStatusColor = (status) => {
@@ -851,7 +943,7 @@ const VisitConfirmationModal = ({
   const [selectedStatus, setSelectedStatus] = useState(null);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl max-w-md w-full">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
@@ -959,6 +1051,7 @@ const AlternateVisitForm = ({
     customerName: "",
     location: "",
     industrialArea: "",
+    visitTypes: [],
     plannedDate: originalVisit.plannedDate,
     actualDate: new Date().toISOString(),
     notes: "",
@@ -987,9 +1080,13 @@ const AlternateVisitForm = ({
       !formData.customerName ||
       !formData.location ||
       !formData.industrialArea ||
+      !formData.visitTypes ||
+      formData.visitTypes.length === 0 ||
       !formData.notes
     ) {
-      alert("Please fill in all required fields including notes");
+      alert(
+        "Please fill in all required fields including visit types and notes",
+      );
       return;
     }
 
@@ -1006,6 +1103,15 @@ const AlternateVisitForm = ({
       ...formData,
       [e.target.name]: e.target.value,
     });
+  };
+
+  const handleVisitTypeToggle = (type) => {
+    setFormData((prev) => ({
+      ...prev,
+      visitTypes: prev.visitTypes.includes(type)
+        ? prev.visitTypes.filter((item) => item !== type)
+        : [...prev.visitTypes, type],
+    }));
   };
 
   const handleAreaSelect = (area) => {
@@ -1040,9 +1146,14 @@ const AlternateVisitForm = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-slate-900/30 backdrop-blur-[3px]"
+        onClick={onCancel}
+      />
+
+      <div className="relative z-10 bg-white rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <div className="p-6 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">
               Log Additional/Alternate
@@ -1061,165 +1172,173 @@ const AlternateVisitForm = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Customer Name *
-              </label>
-              <input
-                type="text"
-                name="customerName"
-                value={formData.customerName}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter customer name"
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer Name *
+                </label>
+                <input
+                  type="text"
+                  name="customerName"
+                  value={formData.customerName}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter customer name"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Location *
-              </label>
-              <input
-                type="text"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter location"
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location *
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter location"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Industrial Area *
-              </label>
-              <div className="relative">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Industrial Area *
+                </label>
                 <div className="relative">
-                  <input
-                    type="text"
-                    value={areaSearchTerm}
-                    onChange={handleAreaSearchChange}
-                    onFocus={() => setIsAreaDropdownOpen(true)}
-                    placeholder="Search industrial areas..."
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <Search className="h-4 w-4 text-gray-400" />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={areaSearchTerm}
+                      onChange={handleAreaSearchChange}
+                      onFocus={() => setIsAreaDropdownOpen(true)}
+                      placeholder="Search industrial areas..."
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <Search className="h-4 w-4 text-gray-400" />
+                    </div>
                   </div>
+
+                  {isAreaDropdownOpen && (
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {filteredAreas.length > 0 ? (
+                        filteredAreas
+                          .filter((area) => area.isActive)
+                          .map((area) => (
+                            <button
+                              key={area.id}
+                              type="button"
+                              onClick={() => handleAreaSelect(area)}
+                              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-gray-900">
+                                {area.name}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {area.city}, {area.state} • {area.region} •{" "}
+                                {area.potential} Potential
+                              </div>
+                            </button>
+                          ))
+                      ) : (
+                        <div className="px-3 py-2 text-gray-500 text-sm">
+                          No industrial areas found matching "{areaSearchTerm}"
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {isAreaDropdownOpen && (
-                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {filteredAreas.length > 0 ? (
-                      filteredAreas
-                        .filter((area) => area.isActive)
-                        .map((area) => (
-                          <button
-                            key={area.id}
-                            type="button"
-                            onClick={() => handleAreaSelect(area)}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="font-medium text-gray-900">
-                              {area.name}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {area.city}, {area.state} • {area.region} •{" "}
-                              {area.potential} Potential
-                            </div>
-                          </button>
-                        ))
-                    ) : (
-                      <div className="px-3 py-2 text-gray-500 text-sm">
-                        No industrial areas found matching "{areaSearchTerm}"
-                      </div>
-                    )}
-                  </div>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setIsAreaDropdownOpen(false)}
+                  />
                 )}
               </div>
 
-              {isAreaDropdownOpen && (
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setIsAreaDropdownOpen(false)}
-                />
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Visit Type
-              </label>
-              <select
-                name="visitType"
-                value={formData.visitType}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="BD_VISIT">BD Visit</option>
-                <option value="ABP_VISIT">ABP Visit</option>
-                <option value="ONGOING_DEAL">Ongoing Deal</option>
-                <option value="KEY_ACCOUNT">Key Account</option>
-                <option value="OFFICE">Office</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Visit Date
-              </label>
-              <input
-                type="date"
-                name="plannedDate"
-                value={formData.plannedDate}
-                disabled
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 focus:outline-none"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Date is fixed to the original visit date
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Visit Notes & Outcomes *
-            </label>
-            <textarea
-              name="notes"
-              value={formData.notes || ""}
-              onChange={handleChange}
-              rows={4}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Describe the alternate visit details, outcomes, discussions, next steps, etc."
-            />
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start space-x-2">
-              <RotateCcw className="h-5 w-5 text-blue-600 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-blue-800">
-                  Additional Visit Information
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Visit Date
+                </label>
+                <input
+                  type="date"
+                  name="plannedDate"
+                  value={formData.plannedDate}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 focus:outline-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Date is fixed to the original visit date
                 </p>
-                <p className="text-sm text-blue-700 mt-1">
-                  This visit will be logged as an additional visit for the same
-                  date and will be automatically marked as completed.{" "}
-                  {originalVisit?.status === "missed"
-                    ? 'It will show as "Alternate" since the original visit was missed.'
-                    : 'It will show as "Additional" since the original visit was completed.'}
-                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">
+                Visit Types *
+              </label>
+              <div className="max-h-52 overflow-y-auto rounded-2xl border border-gray-300 bg-gray-50 p-3 space-y-2.5">
+                {VISIT_TYPE_OPTIONS.map((option) => (
+                  <label
+                    key={option.value}
+                    className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 border border-slate-200 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.visitTypes?.includes(option.value)}
+                      onChange={() => handleVisitTypeToggle(option.value)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      {option.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Visit Notes & Outcomes *
+              </label>
+              <textarea
+                name="notes"
+                value={formData.notes || ""}
+                onChange={handleChange}
+                rows={4}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Describe the alternate visit details, outcomes, discussions, next steps, etc."
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start space-x-2">
+                <RotateCcw className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-blue-800">
+                    Additional Visit Information
+                  </p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    This visit will be logged as an additional visit for the
+                    same date and will be automatically marked as completed.{" "}
+                    {originalVisit?.status === "missed"
+                      ? 'It will show as "Alternate" since the original visit was missed.'
+                      : 'It will show as "Additional" since the original visit was completed.'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4">
+          <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
             <button
               type="button"
               onClick={onCancel}

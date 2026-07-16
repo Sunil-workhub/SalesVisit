@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import SalesVisitService from "../../services/salesVisit/SalesVisitService";
 import {
   Plus,
-  Edit2,
   Send,
   ChevronLeft,
   ChevronRight,
@@ -15,6 +14,7 @@ import {
   Building2,
   Target,
   ClipboardList,
+  Trash2,
 } from "lucide-react";
 
 const sessionUser = JSON.parse(sessionStorage.getItem("user") || "{}");
@@ -30,6 +30,7 @@ const VISIT_TYPE_OPTIONS = [
 ];
 
 const NON_BUSINESS_VISIT_TYPES = ["OFFICE", "LEAVE"];
+const LOCKED_PLAN_STATUSES = ["pending_approval", "approved"];
 
 const extractLocalDateString = (dateVal) => {
   if (!dateVal) return "";
@@ -46,6 +47,17 @@ const normalizeVisitTypes = (value) => {
   }
   return [];
 };
+
+const normalizePlanStatus = (status) =>
+  String(status || "")
+    .trim()
+    .toLowerCase();
+
+const isPlanLocked = (planStatus) =>
+  LOCKED_PLAN_STATUSES.includes(normalizePlanStatus(planStatus));
+
+const isPlanApproved = (planStatus) =>
+  normalizePlanStatus(planStatus) === "approved";
 
 const mapVisit = (visit) => {
   if (!visit) return null;
@@ -100,7 +112,7 @@ const mapPlan = (plan) => {
     month: plan.month || "",
     year: plan.year || 0,
     visits: (plan.visits || []).map(mapVisit).filter(Boolean),
-    status: plan.status || "draft",
+    status: normalizePlanStatus(plan.status || "draft"),
     submittedAt:
       plan.submitted_At || plan.submitted_at || plan.submittedAt || null,
     approvedAt: plan.approved_At || plan.approved_at || plan.approvedAt || null,
@@ -128,8 +140,9 @@ const mapPlan = (plan) => {
 };
 
 const getMonthParts = (monthKey) => {
-  if (!monthKey)
+  if (!monthKey) {
     return { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+  }
   const [year, month] = monthKey.split("-").map(Number);
   return { year, month };
 };
@@ -158,7 +171,9 @@ const MonthlyPlanPage = () => {
 
   useEffect(() => {
     const currentDate = new Date();
-    const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+    const monthKey = `${currentDate.getFullYear()}-${String(
+      currentDate.getMonth() + 1,
+    ).padStart(2, "0")}`;
     setSelectedMonth(monthKey);
     setSelectedYear(currentDate.getFullYear());
     loadPageData(monthKey);
@@ -169,7 +184,7 @@ const MonthlyPlanPage = () => {
       setLoading(true);
       setError(null);
 
-      const targetMonth = month ? month : selectedMonth;
+      const targetMonth = month || selectedMonth;
       const response = await SalesVisitService.getVisitsByMonth({
         user_Id: empId,
         month: targetMonth,
@@ -213,11 +228,17 @@ const MonthlyPlanPage = () => {
       setLoading(true);
       setError(null);
 
-      const { year: plannedYear, month: plannedMonth } = getMonthParts(
-        visitData.plannedDate
-          ? visitData.plannedDate.slice(0, 7)
-          : selectedMonth,
-      );
+      if (isPlanApproved(currentPlan?.status)) {
+        setError("Approved monthly plans cannot be edited");
+        return;
+      }
+
+      const plannedMonthKey = visitData.plannedDate
+        ? visitData.plannedDate.slice(0, 7)
+        : selectedMonth;
+
+      const { year: plannedYear, month: plannedMonth } =
+        getMonthParts(plannedMonthKey);
 
       const payload = {
         user_Id: empId,
@@ -227,42 +248,79 @@ const MonthlyPlanPage = () => {
         visit_Types: visitData.visitTypes,
         planned_Date: visitData.plannedDate,
         notes: visitData.notes,
-        month: selectedMonth,
         id: editingVisit?.id || null,
+        plan_Id: currentPlan?.id || visitData.planId || null,
         year: plannedYear,
+        month: plannedMonthKey,
         monthKey: `${plannedYear}-${String(plannedMonth).padStart(2, "0")}`,
+        ...(editingVisit && { updated_By: empId }),
       };
 
-      const response = await SalesVisitService.addVisit(payload);
-      const payloadData = response?.data || response || {};
-      const savedVisit = mapVisit(
-        payloadData.visit || payloadData.data || payloadData,
-      );
-
-      if (!savedVisit)
-        throw new Error("Invalid response structural format mapping.");
-
       if (editingVisit) {
-        setVisits((prev) =>
-          prev.map((item) => (item.id === editingVisit.id ? savedVisit : item)),
-        );
-        setEditingVisit(null);
+        if (isPlanLocked(currentPlan?.status)) {
+          setError("Visits cannot be edited after submitting for approval");
+          return;
+        }
+
+        await (SalesVisitService.updateVisit
+          ? SalesVisitService.updateVisit(payload)
+          : Promise.resolve({ success: true }));
       } else {
-        setVisits((prev) => [...prev, savedVisit]);
+        await SalesVisitService.addVisit(payload);
       }
 
+      await loadPageData(selectedMonth);
       setIsAddingVisit(false);
+      setEditingVisit(null);
       setSelectedDate("");
     } catch (err) {
       console.error("Error saving visit:", err);
-      setError("Failed to save visit");
+      setError(
+        err?.response?.data?.message || err?.message || "Failed to save visit",
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteVisit = (visitId) => {
-    setVisits((prev) => prev.filter((visit) => visit.id !== visitId));
+  const handleDeleteVisit = async (visitId) => {
+    try {
+      if (!visitId) return;
+
+      if (isPlanLocked(currentPlan?.status)) {
+        setError("Visits cannot be deleted after submitting for approval");
+        return;
+      }
+
+      if (!window.confirm("Are you sure you want to delete this visit?")) {
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      await (SalesVisitService.deleteVisit
+        ? SalesVisitService.deleteVisit({
+            id: visitId,
+            deleted_By: empId,
+            plan_Id: currentPlan?.id || null,
+          })
+        : Promise.resolve({ success: true }));
+
+      await loadPageData(selectedMonth);
+      setIsAddingVisit(false);
+      setEditingVisit(null);
+      setSelectedDate("");
+    } catch (err) {
+      console.error("Error deleting visit:", err);
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to delete visit",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmitPlan = async () => {
@@ -394,11 +452,14 @@ const MonthlyPlanPage = () => {
     if (!month) return "";
     const [yearStr, monthStr] = month.split("-");
     const date = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
-    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    return date.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    switch (normalizePlanStatus(status)) {
       case "approved":
         return "text-green-700 bg-green-50 border-green-200";
       case "pending_approval":
@@ -410,8 +471,11 @@ const MonthlyPlanPage = () => {
     }
   };
 
-  const canEdit =
-    !currentPlan || ["draft", "rejected"].includes(currentPlan.status);
+  const planStatus = normalizePlanStatus(currentPlan?.status);
+  const isReadOnlyPlan = !!currentPlan && isPlanLocked(planStatus);
+  const canEdit = !isReadOnlyPlan;
+  const canAddVisit = !isReadOnlyPlan;
+  const canDeleteVisit = !isReadOnlyPlan;
 
   const calendarDates = useMemo(() => {
     if (!selectedMonth) return [];
@@ -420,7 +484,9 @@ const MonthlyPlanPage = () => {
     const dates = [];
 
     for (let day = 1; day <= lastDay.getDate(); day += 1) {
-      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(
+        day,
+      ).padStart(2, "0")}`;
       const date = new Date(year, month - 1, day);
 
       dates.push({
@@ -458,7 +524,9 @@ const MonthlyPlanPage = () => {
     }
 
     for (let day = 1; day <= totalDays; day += 1) {
-      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(
+        day,
+      ).padStart(2, "0")}`;
       const dateObj = new Date(year, month - 1, day);
       const matched = calendarDates.find((d) => d.date === dateString);
 
@@ -511,7 +579,7 @@ const MonthlyPlanPage = () => {
                     className={`flex items-center space-x-2 px-4 py-2 rounded-full border text-sm font-medium ${getStatusColor(currentPlan.status)}`}
                   >
                     <span className="capitalize">
-                      {currentPlan.status.replace("_", " ")}
+                      {String(currentPlan.status || "").replace("_", " ")}
                     </span>
                   </div>
                 )}
@@ -534,6 +602,7 @@ const MonthlyPlanPage = () => {
             <button
               onClick={() => navigateMonth("prev")}
               className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:text-slate-800 hover:shadow"
+              type="button"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -550,6 +619,7 @@ const MonthlyPlanPage = () => {
             <button
               onClick={() => navigateMonth("next")}
               className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:text-slate-800 hover:shadow"
+              type="button"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -566,6 +636,7 @@ const MonthlyPlanPage = () => {
                   <button
                     onClick={downloadTemplate}
                     className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-900"
+                    type="button"
                   >
                     <Download className="h-4 w-4" />
                     <span>Template</span>
@@ -582,12 +653,12 @@ const MonthlyPlanPage = () => {
               {currentPlan &&
                 canEdit &&
                 businessVisitCount > 0 &&
-                currentPlan.status !== "pending_approval" &&
-                currentPlan.status !== "approved" && (
+                !isPlanLocked(currentPlan.status) && (
                   <button
                     onClick={handleSubmitPlan}
                     disabled={loading}
                     className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                    type="button"
                   >
                     <Send className="h-4 w-4" />
                     <span>Submit for Approval</span>
@@ -660,13 +731,20 @@ const MonthlyPlanPage = () => {
                     <MonthCell
                       key={dateInfo.id}
                       dateInfo={dateInfo}
-                      canEdit={canEdit}
+                      canAddVisit={canAddVisit}
+                      canEditVisit={!isReadOnlyPlan}
+                      canDeleteVisit={canDeleteVisit}
                       onAddVisit={() => {
-                        if (!dateInfo?.date) return;
+                        if (!dateInfo?.date || isReadOnlyPlan) return;
                         setSelectedDate(dateInfo.date);
+                        setEditingVisit(null);
                         setIsAddingVisit(true);
                       }}
-                      onEditVisit={(visit) => setEditingVisit(visit)}
+                      onEditVisit={(visit) => {
+                        if (isReadOnlyPlan) return;
+                        setIsAddingVisit(false);
+                        setEditingVisit(visit);
+                      }}
                       onDeleteVisit={handleDeleteVisit}
                     />
                   ))}
@@ -681,6 +759,9 @@ const MonthlyPlanPage = () => {
             visit={editingVisit}
             selectedDate={selectedDate}
             industrialAreas={industrialAreas}
+            canEditVisit={!isReadOnlyPlan}
+            canDeleteVisit={!!editingVisit && canDeleteVisit}
+            onDelete={handleDeleteVisit}
             onSave={handleSaveVisit}
             onCancel={() => {
               setIsAddingVisit(false);
@@ -772,7 +853,15 @@ const getVisitTypeLabel = (type) =>
   VISIT_TYPE_OPTIONS.find((option) => option.value === type)?.shortLabel ||
   type;
 
-const MonthCell = ({ dateInfo, canEdit, onAddVisit, onEditVisit }) => {
+const MonthCell = ({
+  dateInfo,
+  canAddVisit,
+  canEditVisit,
+  canDeleteVisit,
+  onAddVisit,
+  onEditVisit,
+  onDeleteVisit,
+}) => {
   if (!dateInfo?.isCurrentMonth) {
     return (
       <div className="min-h-[150px] border-r border-b border-slate-200 bg-slate-50/70 last:border-r-0" />
@@ -794,11 +883,12 @@ const MonthCell = ({ dateInfo, canEdit, onAddVisit, onEditVisit }) => {
           {dateInfo.day}
         </div>
 
-        {canEdit && (
+        {canAddVisit && (
           <button
             onClick={onAddVisit}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 opacity-70 transition hover:bg-blue-50 hover:text-blue-600 group-hover:opacity-100"
             title="Add visit"
+            type="button"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -807,29 +897,54 @@ const MonthCell = ({ dateInfo, canEdit, onAddVisit, onEditVisit }) => {
 
       <div className="space-y-1.5">
         {dateInfo.visits.slice(0, 3).map((visit) => {
-          const visitTypesList = visit.visitTypes;
+          const visitTypesList = visit.visitTypes || [];
           const firstType = visitTypesList[0] || "OFFICE";
 
           return (
-            <button
+            <div
               key={visit.id}
-              type="button"
-              onClick={() => onEditVisit(visit)}
-              className={`w-full rounded-xl border px-2.5 py-2 text-left text-[11px] shadow-sm transition hover:shadow ${getVisitTypeColor(firstType)}`}
+              className={`w-full rounded-xl border px-2.5 py-2 text-left text-[11px] shadow-sm ${getVisitTypeColor(firstType)}`}
             >
-              <div className="truncate font-semibold">{visit.customerName}</div>
-              <div className="mt-0.5 truncate opacity-75">{visit.location}</div>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {visitTypesList.slice(0, 2).map((type) => (
-                  <span
-                    key={`${visit.id}-${type}`}
-                    className="rounded-full border border-white/60 bg-white/70 px-1.5 py-0.5 text-[9px] font-medium"
+              <button
+                type="button"
+                onClick={() => {
+                  if (!canEditVisit) return;
+                  onEditVisit(visit);
+                }}
+                className={`w-full text-left ${canEditVisit ? "cursor-pointer" : "cursor-default"}`}
+                disabled={!canEditVisit}
+              >
+                <div className="truncate font-semibold">
+                  {visit.customerName}
+                </div>
+                <div className="mt-0.5 truncate opacity-75">
+                  {visit.location}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {visitTypesList.slice(0, 2).map((type) => (
+                    <span
+                      key={`${visit.id}-${type}`}
+                      className="rounded-full border border-white/60 bg-white/70 px-1.5 py-0.5 text-[9px] font-medium"
+                    >
+                      {getVisitTypeLabel(type)}
+                    </span>
+                  ))}
+                </div>
+              </button>
+
+              {canDeleteVisit && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => onDeleteVisit(visit.id)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-red-600 transition hover:bg-red-100"
+                    title="Delete visit"
                   >
-                    {getVisitTypeLabel(type)}
-                  </span>
-                ))}
-              </div>
-            </button>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           );
         })}
 
@@ -853,9 +968,15 @@ const VisitForm = ({
   visit,
   selectedDate,
   industrialAreas,
+  canEditVisit,
+  canDeleteVisit,
+  onDelete,
   onSave,
   onCancel,
 }) => {
+  const isEditMode = !!visit;
+  const isReadOnly = isEditMode && !canEditVisit;
+
   const [areaSearchTerm, setAreaSearchTerm] = useState("");
   const [isAreaDropdownOpen, setIsAreaDropdownOpen] = useState(false);
   const [filteredAreas, setFilteredAreas] = useState([]);
@@ -903,17 +1024,20 @@ const VisitForm = ({
   }, [visit, industrialAreas]);
 
   const handleChange = (event) => {
+    if (isReadOnly) return;
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleAreaSelect = (area) => {
+    if (isReadOnly) return;
     setFormData((prev) => ({ ...prev, industrialArea: area.name }));
     setAreaSearchTerm(`${area.name} - ${area.city}, ${area.state}`);
     setIsAreaDropdownOpen(false);
   };
 
   const handleAreaSearchChange = (event) => {
+    if (isReadOnly) return;
     const value = event.target.value;
     setAreaSearchTerm(value);
     setIsAreaDropdownOpen(true);
@@ -930,6 +1054,7 @@ const VisitForm = ({
   };
 
   const handleVisitTypeToggle = (type) => {
+    if (isReadOnly) return;
     setFormData((prev) => ({
       ...prev,
       visitTypes: prev.visitTypes.includes(type)
@@ -941,11 +1066,17 @@ const VisitForm = ({
   const handleSubmit = (event) => {
     event.preventDefault();
 
+    if (isReadOnly) {
+      onCancel();
+      return;
+    }
+
     if (
       !formData.customerName ||
       !formData.location ||
       !formData.industrialArea ||
-      formData.visitTypes.length === 0
+      formData.visitTypes.length === 0 ||
+      !formData.plannedDate
     ) {
       alert("Please fill in all required fields");
       return;
@@ -986,7 +1117,11 @@ const VisitForm = ({
           <div className="flex items-center justify-between gap-4">
             <div>
               <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                {visit ? "Edit Visit" : "Add New Visit"}
+                {isEditMode
+                  ? isReadOnly
+                    ? "View Visit"
+                    : "Edit Visit"
+                  : "Add New Visit"}
               </h3>
               {(selectedDate || formData.plannedDate) && (
                 <p className="mt-1 text-sm text-slate-500">
@@ -997,6 +1132,7 @@ const VisitForm = ({
             <button
               onClick={onCancel}
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+              type="button"
             >
               <X className="h-5 w-5" />
             </button>
@@ -1017,8 +1153,13 @@ const VisitForm = ({
                 name="customerName"
                 value={formData.customerName}
                 onChange={handleChange}
+                disabled={isReadOnly}
                 required
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                className={`w-full rounded-xl border px-3.5 py-2.5 outline-none ${
+                  isReadOnly
+                    ? "border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                    : "border-slate-300 text-slate-900 transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                }`}
                 placeholder="Enter customer name"
               />
             </div>
@@ -1032,8 +1173,13 @@ const VisitForm = ({
                 name="location"
                 value={formData.location}
                 onChange={handleChange}
+                disabled={isReadOnly}
                 required
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                className={`w-full rounded-xl border px-3.5 py-2.5 outline-none ${
+                  isReadOnly
+                    ? "border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                    : "border-slate-300 text-slate-900 transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                }`}
                 placeholder="Enter location"
               />
             </div>
@@ -1048,9 +1194,14 @@ const VisitForm = ({
                     type="text"
                     value={areaSearchTerm}
                     onChange={handleAreaSearchChange}
-                    onFocus={() => setIsAreaDropdownOpen(true)}
+                    onFocus={() => !isReadOnly && setIsAreaDropdownOpen(true)}
+                    disabled={isReadOnly}
                     placeholder="Search industrial areas..."
-                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 pr-10 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    className={`w-full rounded-xl border px-3.5 py-2.5 pr-10 outline-none ${
+                      isReadOnly
+                        ? "border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                        : "border-slate-300 text-slate-900 transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    }`}
                     required
                   />
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
@@ -1058,7 +1209,7 @@ const VisitForm = ({
                   </div>
                 </div>
 
-                {isAreaDropdownOpen && (
+                {!isReadOnly && isAreaDropdownOpen && (
                   <div className="absolute z-20 mt-2 max-h-60 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
                     {filteredAreas.length > 0 ? (
                       filteredAreas.map((area) => (
@@ -1094,12 +1245,17 @@ const VisitForm = ({
                 {VISIT_TYPE_OPTIONS.map((option) => (
                   <label
                     key={option.value}
-                    className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 border border-slate-200 cursor-pointer"
+                    className={`flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 border border-slate-200 ${
+                      isReadOnly
+                        ? "cursor-not-allowed opacity-70"
+                        : "cursor-pointer"
+                    }`}
                   >
                     <input
                       type="checkbox"
                       checked={formData.visitTypes.includes(option.value)}
                       onChange={() => handleVisitTypeToggle(option.value)}
+                      disabled={isReadOnly}
                       className="h-4 w-4 rounded border-slate-300 text-blue-600"
                     />
                     <span className="text-sm font-medium text-slate-700">
@@ -1112,14 +1268,20 @@ const VisitForm = ({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-400">
-              Planned Date
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Planned Date *
             </label>
             <input
-              type="text"
+              type={isReadOnly ? "text" : "date"}
+              name="plannedDate"
               value={formData.plannedDate}
-              disabled
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-400 cursor-not-allowed outline-none"
+              onChange={handleChange}
+              disabled={isReadOnly}
+              className={`w-full rounded-xl border px-3.5 py-2.5 outline-none ${
+                isReadOnly
+                  ? "border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                  : "border-slate-300 text-slate-900 transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              }`}
             />
           </div>
 
@@ -1131,26 +1293,49 @@ const VisitForm = ({
               name="notes"
               value={formData.notes}
               onChange={handleChange}
+              disabled={isReadOnly}
               rows={3}
-              className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className={`w-full rounded-xl border px-3.5 py-2.5 outline-none ${
+                isReadOnly
+                  ? "border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed"
+                  : "border-slate-300 text-slate-900 transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              }`}
               placeholder="Add any additional notes or comments"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
-            >
-              {visit ? "Update Visit" : "Add Visit"}
-            </button>
+          <div className="flex justify-between gap-3 pt-2">
+            <div>
+              {isEditMode && canDeleteVisit && !isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(visit.id)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-100"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>Delete</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
+              >
+                {isReadOnly ? "Close" : "Cancel"}
+              </button>
+
+              {!isReadOnly && (
+                <button
+                  type="submit"
+                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
+                >
+                  {isEditMode ? "Update Visit" : "Add Visit"}
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

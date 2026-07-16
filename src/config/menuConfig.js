@@ -28,6 +28,7 @@ const TeamManagementPage = lazy(
 const OrgDashboardPage = lazy(
   () => import("../pages/salesVisit/OrganizationDashboardPage"),
 );
+const ProfilePage = lazy(() => import("../pages/salesVisit/ProfilePage"));
 
 const menuConfig = [
   {
@@ -89,6 +90,12 @@ const menuConfig = [
     key: "team-management",
     label: "Team Management",
     component: TeamManagementPage,
+  },
+  {
+    path: "/profile",
+    key: "profile",
+    label: "Profile",
+    component: ProfilePage,
   },
 ];
 

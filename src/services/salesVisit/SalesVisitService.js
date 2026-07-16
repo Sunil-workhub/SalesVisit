@@ -300,6 +300,60 @@ const SalesVisitService = {
       throw error;
     }
   },
+
+  updateVisit: async (payload) => {
+    try {
+      const response = await APIHelper(
+        "POST",
+        API.SalesVisit.updateVisit,
+        payload,
+      );
+      return response;
+    } catch (error) {
+      console.error("Error updating visit:", error);
+      throw error;
+    }
+  },
+
+  deleteVisit: async (payload) => {
+    try {
+      const response = await APIHelper(
+        "POST",
+        API.SalesVisit.deleteVisit,
+        payload,
+      );
+      return response;
+    } catch (error) {
+      console.error("Error deleting visit:", error);
+      throw error;
+    }
+  },
+  getMyProfile: async (id) => {
+    try {
+      const response = await APIHelper(
+        "GET",
+        `${API.SalesVisit.GetMyProfileSalesVisit}/${id}`,
+      );
+      return response;
+    } catch (error) {
+      console.error("Error fetching my profile:", error);
+      throw error;
+    }
+  },
+
+  updateTeamUser: async (payload) => {
+    try {
+      const response = await APIHelper(
+        "POST",
+        API.SalesVisit.updateTeamUser,
+        payload,
+      );
+      return response;
+    } catch (error) {
+      console.error("Error updating team user:", error);
+      throw error;
+    }
+  },
 };
 
 export default SalesVisitService;

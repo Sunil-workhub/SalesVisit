@@ -59,6 +59,9 @@ const API = {
     getTeamUsers: "/ILeap/GetTeamUsers",
     createTeamUser: "/ILeap/CreateTeamUser",
     getOrgDashboard: "/ILeap/GetOrgDashboard",
+    GetMyProfileSalesVisit: "/ILeap/GetMyProfileSalesVisit",
+    deleteVisit: "/ILeap/DeleteVisit",
+    updateVisit: "/ILeap/UpdateVisit",
   },
 
   // common

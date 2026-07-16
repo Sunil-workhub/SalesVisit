@@ -1,107 +1,38 @@
 import React, { useEffect, useState } from "react";
 import {
   Calendar,
-  TrendingUp,
   ChevronLeft,
   ChevronRight,
-  User,
   Building,
   Target,
   BarChart3,
   MapPin,
-  Activity,
   CheckCircle2,
-  Clock3,
-  CalendarDays,
-  Layers3,
+  Award,
+  Users,
 } from "lucide-react";
 import SalesVisitService from "../../services/salesVisit/SalesVisitService";
 
 const sessionUser = JSON.parse(sessionStorage.getItem("user") || "{}");
 const empId = sessionUser?.emp_id;
-
-const DEFAULT_DASHBOARD = {
-  monthly: {
-    summary: {
-      totalPlanned: 0,
-      completed: 0,
-      pending: 0,
-      visitDays: 0,
-    },
-    visitTypes: [],
-    industrialAreaCoverage: {
-      assignedAreas: 0,
-      areasVisited: 0,
-      coverageRate: 0,
-    },
-    coverageByPotential: [],
-    focusAreaCoverageAnalysis: {
-      totalFocusAreas: 0,
-      areasCovered: 0,
-      coverageRate: 0,
-      avgVisitsPerArea: 0,
-    },
-    coverageDepthAnalysis: {
-      deepCoverage: 0,
-      moderateCoverage: 0,
-      lightCoverage: 0,
-      noCoverage: 0,
-    },
-    focusAreaCoverageProgress: {
-      covered: 0,
-      total: 0,
-      percentage: 0,
-    },
-    myFocusAreas: [],
-  },
-  ytd: {
-    summary: {
-      totalPlanned: 0,
-      completed: 0,
-      pending: 0,
-      visitDays: 0,
-    },
-    visitTypes: [],
-    industrialAreaCoverage: {
-      assignedAreas: 0,
-      areasVisited: 0,
-      coverageRate: 0,
-    },
-    coverageByPotential: [],
-    focusAreaCoverageAnalysis: {
-      totalFocusAreas: 0,
-      areasCovered: 0,
-      coverageRate: 0,
-      avgVisitsPerArea: 0,
-    },
-    coverageDepthAnalysis: {
-      deepCoverage: 0,
-      moderateCoverage: 0,
-      lightCoverage: 0,
-      noCoverage: 0,
-    },
-    focusAreaCoverageProgress: {
-      covered: 0,
-      total: 0,
-      percentage: 0,
-    },
-    myFocusAreas: [],
-  },
-};
+const FY_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
 
 const OrgDashboardPage = () => {
   const [selectedTab, setSelectedTab] = useState("month");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [dashboardData, setDashboardData] = useState(DEFAULT_DASHBOARD);
-  console.log(dashboardData, "dashboardData");
+  const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+
   useEffect(() => {
     const now = new Date();
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    setSelectedMonth(monthKey);
+    setSelectedMonth(
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+    );
     setSelectedYear(now.getFullYear());
   }, []);
 
@@ -111,103 +42,19 @@ const OrgDashboardPage = () => {
     }
   }, [selectedMonth, selectedYear]);
 
-  const normalizeDashboardData = (apiData = {}) => {
-    const normalizeSection = (section = {}) => {
-      const summary = section.summary || {};
-      const focusAreaCoverage = section.focusAreaCoverage || {};
-      const areaCoverage = section.areaCoverage || {};
-      const byPotential = Array.isArray(areaCoverage.byPotential)
-        ? areaCoverage.byPotential
-        : [];
-      const focusAreaStats = Array.isArray(section.focusAreaStats)
-        ? section.focusAreaStats
-        : [];
-
-      return {
-        summary: {
-          totalPlanned: summary.totalVisits || 0,
-          completed: summary.completedVisits || 0,
-          pending: summary.plannedVisits || 0,
-          visitDays: summary.uniqueVisitDays || 0,
-        },
-        visitTypes: (section.visitTypes || []).map((item) => ({
-          label: item.visitType || "",
-          count: item.planned || 0,
-          planned: item.planned || 0,
-          actual: item.actual || 0,
-          completionRate: item.completionRate || 0,
-          percentage: item.percentage || 0,
-        })),
-        industrialAreaCoverage: {
-          assignedAreas: areaCoverage.totalAreas || 0,
-          areasVisited: areaCoverage.coveredAreas || 0,
-          coverageRate: areaCoverage.coverageRate || 0,
-        },
-        coverageByPotential: byPotential.map((item) => ({
-          potential: item.potential || "",
-          totalAreas: item.totalAreas || 0,
-          coveredAreas: item.coveredAreas || 0,
-          coverageRate: item.coverageRate || 0,
-        })),
-        focusAreaCoverageAnalysis: {
-          totalFocusAreas: focusAreaCoverage.totalFocusAreas || 0,
-          areasCovered: focusAreaCoverage.areasCovered || 0,
-          coverageRate: focusAreaCoverage.coverageRate || 0,
-          avgVisitsPerArea: focusAreaCoverage.avgVisitsPerArea || 0,
-        },
-        coverageDepthAnalysis: {
-          deepCoverage: focusAreaCoverage.deepCoverage || 0,
-          moderateCoverage: focusAreaCoverage.moderateCoverage || 0,
-          lightCoverage: focusAreaCoverage.lightCoverage || 0,
-          noCoverage: focusAreaCoverage.noCoverage || 0,
-        },
-        focusAreaCoverageProgress: {
-          covered: focusAreaCoverage.areasCovered || 0,
-          total: focusAreaCoverage.totalFocusAreas || 0,
-          percentage: focusAreaCoverage.coverageRate || 0,
-        },
-        myFocusAreas: focusAreaStats.map((area) => ({
-          areaName: area.areaName || "",
-          city: area.city || "",
-          state: area.state || "",
-          potential: area.potential || "",
-          totalVisits: area.totalVisits || 0,
-          completedVisits: area.completedVisits || 0,
-          coverageRate: area.coverageRate || 0,
-        })),
-      };
-    };
-
-    return {
-      monthly: normalizeSection(apiData.monthly),
-      ytd: normalizeSection(apiData.ytd),
-    };
-  };
-
   const loadDashboard = async () => {
     try {
       setLoading(true);
       setError("");
-
       const response = await SalesVisitService.getOrgDashboard({
         month: selectedMonth,
         year: selectedYear,
-        empId: empId,
+        empId: null,
       });
-
-      const apiData =
-        response?.data?.data?.monthly || response?.data?.data?.ytd
-          ? response.data.data
-          : response?.data?.monthly || response?.data?.ytd
-            ? response.data
-            : response?.monthly || response?.ytd
-              ? response
-              : {};
-      setDashboardData(normalizeDashboardData(apiData));
+      const resData = response?.data?.data || response?.data || response;
+      setDashboardData(resData);
     } catch (err) {
-      console.error("Error loading organization dashboard:", err);
-      setError("Failed to load organization dashboard data.");
-      setDashboardData(DEFAULT_DASHBOARD);
+      setError("An error occurred while loading dashboard metrics.");
     } finally {
       setLoading(false);
     }
@@ -215,507 +62,410 @@ const OrgDashboardPage = () => {
 
   const navigateMonth = (direction) => {
     const [year, month] = selectedMonth.split("-").map(Number);
+    const currentIdx = FY_MONTHS.indexOf(month);
+    let newMonthIdx = direction === "next" ? currentIdx + 1 : currentIdx - 1;
     let newYear = year;
-    let newMonth = month;
 
-    if (direction === "next") {
-      newMonth += 1;
-      if (newMonth > 12) {
-        newMonth = 1;
-        newYear += 1;
-      }
-    } else {
-      newMonth -= 1;
-      if (newMonth < 1) {
-        newMonth = 12;
-        newYear -= 1;
-      }
+    if (newMonthIdx > 11) {
+      newMonthIdx = 0;
+      newYear += 1;
+    } else if (newMonthIdx < 0) {
+      newMonthIdx = 11;
+      newYear -= 1;
     }
 
-    const monthKey = `${newYear}-${String(newMonth).padStart(2, "0")}`;
-    setSelectedMonth(monthKey);
+    setSelectedMonth(
+      `${newYear}-${String(FY_MONTHS[newMonthIdx]).padStart(2, "0")}`,
+    );
     setSelectedYear(newYear);
   };
 
-  const formatMonth = (month) => {
-    if (!month) return "";
-    const [year, monthNo] = month.split("-");
-    const date = new Date(parseInt(year, 10), parseInt(monthNo, 10) - 1, 1);
-    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const activeData =
+    selectedTab === "month" ? dashboardData?.monthly : dashboardData?.ytd;
+  const visitLabels = [
+    "BD Visits",
+    "ABP Visits",
+    "Ongoing Deals",
+    "Key Accounts",
+  ];
+  const uniqueMonths = Array.from(
+    new Set((dashboardData?.trends6Month || []).map((t) => t.monthLabel)),
+  );
+
+  const visitColorMap = {
+    "BD Visits": "bg-blue-500",
+    "ABP Visits": "bg-purple-500",
+    "Ongoing Deals": "bg-orange-500",
+    "Key Accounts": "bg-emerald-500",
   };
 
-  const activeData =
-    selectedTab === "month" ? dashboardData.monthly : dashboardData.ytd;
-  const summaryPrefix = selectedTab === "month" ? "" : "YTD ";
-
-  if (loading) {
+  if (loading || !dashboardData || !activeData) {
     return (
-      <div className="min-h-[320px] rounded-[28px] border border-slate-200 bg-white/80 shadow-sm backdrop-blur-sm">
-        <div className="flex h-[320px] items-center justify-center">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 rounded-full border-4 border-slate-200 border-t-slate-900 animate-spin" />
-            <p className="text-sm font-medium text-slate-600">
-              Loading organization dashboard...
-            </p>
-          </div>
-        </div>
+      <div className="flex h-96 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb] -m-4 md:-m-6 p-4 md:p-6">
-      <div className="space-y-6">
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-          <div className="relative px-5 py-6 md:px-8 md:py-8">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.10),_transparent_35%),radial-gradient(circle_at_left,_rgba(59,130,246,0.06),_transparent_30%)]" />
-            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                  <Activity className="h-3.5 w-3.5" />
-                  Organization sales visit dashboard
-                </div>
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
-                  Organization Dashboard
-                </h1>
-                <p className="mt-2 text-sm md:text-base text-slate-500">
-                  Monthly and year-wise organization performance summary
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  <User className="h-4 w-4 text-slate-500" />
-                  <span className="font-medium">Organization view</span>
-                </div>
-
-                <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1.5 shadow-inner">
-                  <button
-                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
-                      selectedTab === "month"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                    onClick={() => setSelectedTab("month")}
-                  >
-                    <Calendar className="h-4 w-4" />
-                    Monthly
-                  </button>
-
-                  <button
-                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
-                      selectedTab === "ytd"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                    onClick={() => setSelectedTab("ytd")}
-                  >
-                    <TrendingUp className="h-4 w-4" />
-                    Year Wise
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-            {error}
-          </div>
-        ) : null}
-
-        <div className="rounded-[28px] border border-slate-200 bg-white p-4 md:p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-          <div className="flex items-center justify-between rounded-[22px] border border-slate-200 bg-slate-50 px-3 py-3 md:px-4 md:py-4">
-            <button
-              onClick={() => navigateMonth("prev")}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:text-slate-800 hover:shadow"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-
-            <div className="text-center px-3">
-              <h2 className="text-lg md:text-xl font-semibold tracking-tight text-slate-900">
-                {formatMonth(selectedMonth)}
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {selectedTab === "month"
-                  ? "Monthly summary"
-                  : "YTD summary till selected month"}
-              </p>
-            </div>
-
-            <button
-              onClick={() => navigateMonth("next")}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:text-slate-800 hover:shadow"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <SummaryCard
-              title={`${summaryPrefix}Total Planned`}
-              value={activeData.summary.totalPlanned}
-              icon={Layers3}
-              tone="slate"
-            />
-            <SummaryCard
-              title={`${summaryPrefix}Completed`}
-              value={activeData.summary.completed}
-              icon={CheckCircle2}
-              tone="green"
-            />
-            <SummaryCard
-              title={`${summaryPrefix}Pending`}
-              value={activeData.summary.pending}
-              icon={Clock3}
-              tone="amber"
-            />
-            <SummaryCard
-              title={`${summaryPrefix}Visit Days`}
-              value={activeData.summary.visitDays}
-              icon={CalendarDays}
-              tone="blue"
-            />
-          </div>
-
-          <div className="mt-6 space-y-6">
-            <SectionCard title={`${summaryPrefix}Visit Types`} icon={BarChart3}>
-              {activeData.visitTypes?.length ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                  {activeData.visitTypes.map((item, index) => (
-                    <div
-                      key={index}
-                      className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-slate-600">
-                          {item.label}
-                        </p>
-                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 border border-slate-200">
-                          {item.completionRate}%
-                        </span>
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div className="flex items-end justify-between">
-                          <span className="text-sm text-slate-500">
-                            Planned
-                          </span>
-                          <span className="text-xl font-semibold text-slate-900">
-                            {item.planned}
-                          </span>
-                        </div>
-                        <div className="flex items-end justify-between">
-                          <span className="text-sm text-slate-500">
-                            Completed
-                          </span>
-                          <span className="text-xl font-semibold text-slate-900">
-                            {item.actual}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="h-2.5 rounded-full bg-slate-200">
-                          <div
-                            className="h-2.5 rounded-full bg-slate-900"
-                            style={{
-                              width: `${Math.min(item.completionRate || 0, 100)}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState text="No visit type data available for this period." />
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title={`${summaryPrefix}Industrial Area Coverage`}
-              icon={MapPin}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MetricBox
-                  label="Assigned Areas"
-                  value={activeData?.industrialAreaCoverage?.assignedAreas}
-                />
-                <MetricBox
-                  label="Areas Visited"
-                  value={activeData?.industrialAreaCoverage?.areasVisited}
-                />
-                <MetricBox
-                  label="Coverage Rate"
-                  value={`${activeData?.industrialAreaCoverage?.coverageRate}%`}
-                />
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title={`${summaryPrefix}Coverage by Potential`}
-              icon={Target}
-            >
-              {activeData?.coverageByPotential?.length ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {activeData.coverageByPotential.map((item, index) => (
-                    <div
-                      key={index}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-semibold text-slate-900">
-                          {item.potential}
-                        </p>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                          {item.coverageRate}%
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm text-slate-500">
-                        {item.coveredAreas} / {item.totalAreas} covered
-                      </p>
-                      <div className="mt-4 h-2.5 rounded-full bg-slate-200">
-                        <div
-                          className="h-2.5 rounded-full bg-gradient-to-r from-slate-800 to-slate-500"
-                          style={{
-                            width: `${Math.min(item.coverageRate || 0, 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState text="No potential-based coverage data available." />
-              )}
-            </SectionCard>
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <SectionCard title="Focus Area Coverage Analysis" icon={Activity}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <MetricBox
-                    label="Total Focus Areas"
-                    value={
-                      activeData?.focusAreaCoverageAnalysis?.totalFocusAreas
-                    }
-                  />
-                  <MetricBox
-                    label="Areas Covered"
-                    value={activeData?.focusAreaCoverageAnalysis?.areasCovered}
-                  />
-                  <MetricBox
-                    label="Coverage Rate"
-                    value={`${activeData?.focusAreaCoverageAnalysis?.coverageRate}%`}
-                  />
-                  <MetricBox
-                    label="Avg Visits / Area"
-                    value={
-                      activeData?.focusAreaCoverageAnalysis?.avgVisitsPerArea
-                    }
-                  />
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Coverage Depth Analysis" icon={Building}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <MetricBox
-                    label="Deep Coverage"
-                    value={activeData?.coverageDepthAnalysis?.deepCoverage}
-                  />
-                  <MetricBox
-                    label="Moderate Coverage"
-                    value={activeData?.coverageDepthAnalysis?.moderateCoverage}
-                  />
-                  <MetricBox
-                    label="Light Coverage"
-                    value={activeData?.coverageDepthAnalysis?.lightCoverage}
-                  />
-                  <MetricBox
-                    label="No Coverage"
-                    value={activeData?.coverageDepthAnalysis?.noCoverage}
-                  />
-                </div>
-              </SectionCard>
-            </div>
-
-            <SectionCard
-              title={`${summaryPrefix}Focus Area Coverage Progress`}
-              icon={TrendingUp}
-            >
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-3 flex items-center justify-between gap-4">
-                  <p className="text-sm text-slate-600">
-                    {activeData?.focusAreaCoverageProgress?.covered} of{" "}
-                    {activeData?.focusAreaCoverageProgress?.total} areas covered
-                  </p>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {activeData?.focusAreaCoverageProgress?.percentage}%
-                  </p>
-                </div>
-                <div className="h-3 rounded-full bg-slate-200 overflow-hidden">
-                  <div
-                    className="h-3 rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-blue-600"
-                    style={{
-                      width: `${Math.min(
-                        activeData?.focusAreaCoverageProgress?.percentage || 0,
-                        100,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Focus Area Stats" icon={Building}>
-              {activeData?.myFocusAreas?.length ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {activeData.myFocusAreas.map((area, index) => (
-                    <div
-                      key={index}
-                      className="group rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="min-w-0">
-                          <h4 className="font-semibold text-slate-900 truncate">
-                            {area.areaName}
-                          </h4>
-                          <p className="text-sm text-slate-500">
-                            {area.city}, {area.state}
-                          </p>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 text-xs font-semibold">
-                          {area.potential}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Visits</span>
-                          <span className="font-semibold text-slate-900">
-                            {area.totalVisits}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Completed</span>
-                          <span className="font-semibold text-emerald-600">
-                            {area.completedVisits}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Coverage</span>
-                          <span className="font-semibold text-violet-600">
-                            {area.coverageRate}%
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 h-2.5 rounded-full bg-slate-200 overflow-hidden">
-                        <div
-                          className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-sky-500"
-                          style={{
-                            width: `${Math.min(area.coverageRate || 0, 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState text="No focus area stats available for this period." />
-              )}
-            </SectionCard>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const SummaryCard = ({ title, value, tone = "slate", icon: Icon }) => {
-  const toneMap = {
-    slate: {
-      wrap: "border-slate-200 bg-white",
-      icon: "bg-slate-100 text-slate-700",
-      text: "text-slate-900",
-      label: "text-slate-500",
-    },
-    green: {
-      wrap: "border-emerald-200 bg-emerald-50/60",
-      icon: "bg-emerald-100 text-emerald-700",
-      text: "text-emerald-900",
-      label: "text-emerald-700/80",
-    },
-    amber: {
-      wrap: "border-amber-200 bg-amber-50/70",
-      icon: "bg-amber-100 text-amber-700",
-      text: "text-amber-900",
-      label: "text-amber-700/80",
-    },
-    blue: {
-      wrap: "border-sky-200 bg-sky-50/70",
-      icon: "bg-sky-100 text-sky-700",
-      text: "text-sky-900",
-      label: "text-sky-700/80",
-    },
-  };
-
-  const styles = toneMap[tone] || toneMap.slate;
-
-  return (
-    <div className={`rounded-[22px] border p-5 shadow-sm ${styles.wrap}`}>
-      <div className="flex items-start justify-between gap-3">
+    <div className="space-y-6 p-4 max-w-[1600px] mx-auto bg-slate-50/50 min-h-screen font-sans antialiased text-slate-800">
+      {/* Filter Control Header */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-xs">
         <div>
-          <p className={`text-sm font-medium ${styles.label}`}>{title}</p>
-          <p
-            className={`mt-3 text-3xl font-bold tracking-tight ${styles.text}`}
-          >
-            {value}
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            Organization Dashboard
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 font-bold uppercase tracking-wider">
+            IML Sales Visit Tracker
           </p>
         </div>
-        {Icon ? (
-          <div className={`rounded-2xl p-3 ${styles.icon}`}>
-            <Icon className="h-5 w-5" />
+
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          <select
+            value={selectedYear}
+            onChange={(e) => {
+              const y = parseInt(e.target.value, 10);
+              setSelectedYear(y);
+              setSelectedMonth(`${y}-${selectedMonth.split("-")[1]}`);
+            }}
+            className="bg-slate-50 text-xs font-bold text-slate-700 border border-slate-200 rounded-xl px-3 py-2.5 outline-none cursor-pointer"
+          >
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>
+                {y} - {y + 1}
+              </option>
+            ))}
+          </select>
+
+          <div className="bg-slate-100 p-1 rounded-xl flex border border-slate-200 text-xs font-bold">
+            <button
+              onClick={() => setSelectedTab("month")}
+              className={`rounded-lg px-4 py-2 transition-all ${selectedTab === "month" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setSelectedTab("ytd")}
+              className={`rounded-lg px-4 py-2 transition-all ${selectedTab === "ytd" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              Year To Date
+            </button>
           </div>
-        ) : null}
+        </div>
+      </div>
+
+      {/* Overview Stat Ribbon */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          label="Total Team Members"
+          value={activeData.summary.teamMembersCount}
+          icon={Users}
+          theme="indigo"
+        />
+        <MetricCard
+          label="Total Planned Visits"
+          value={activeData.summary.totalPlanned}
+          icon={BarChart3}
+          theme="slate"
+        />
+        <MetricCard
+          label="Completed Visits"
+          value={activeData.summary.completed}
+          icon={CheckCircle2}
+          theme="emerald"
+        />
+        <MetricCard
+          label="Pending Executions"
+          value={activeData.summary.pending}
+          icon={Target}
+          theme="orange"
+        />
+      </div>
+
+      {/* Timeline Controls */}
+      <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 p-1.5 shadow-xs">
+        <button
+          onClick={() => navigateMonth("prev")}
+          className="p-2 hover:bg-slate-50 rounded-lg text-slate-500 transition"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="font-extrabold text-slate-800 text-xs tracking-wider uppercase flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-indigo-500" />
+          {new Date(
+            parseInt(selectedMonth.split("-")[0], 10),
+            parseInt(selectedMonth.split("-")[1], 10) - 1,
+            1,
+          ).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+        </span>
+        <button
+          onClick={() => navigateMonth("next")}
+          className="p-2 hover:bg-slate-50 rounded-lg text-slate-500 transition"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Chart & Leaderboard Section */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Simplified Clear Grouped Comparison Bar Chart */}
+        <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 flex flex-col justify-between shadow-xs">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <BarChart3 className="h-4 w-4 text-indigo-500" />
+              Visit Completion Trends
+            </h3>
+            <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+              6-month side-by-side volume comparison
+            </p>
+          </div>
+
+          <div className="mt-6 flex-1 flex flex-col justify-end space-y-4">
+            {/* Unified Single-View Chart Frame Grid */}
+            <div className="grid grid-cols-6 gap-2 items-end h-56 border-b border-slate-100 pb-1">
+              {uniqueMonths.map((mLabel) => {
+                const monthPoints = (dashboardData.trends6Month || []).filter(
+                  (t) => t.monthLabel === mLabel,
+                );
+                const maxVal = Math.max(
+                  ...(dashboardData.trends6Month || []).map(
+                    (t) => t.completedCount,
+                  ),
+                  1,
+                );
+
+                return (
+                  <div
+                    key={mLabel}
+                    className="flex flex-col h-full justify-end items-center bg-slate-50/40 border border-slate-100/50 rounded-xl p-1 pt-6"
+                  >
+                    <div className="w-full flex items-end justify-center gap-1 h-full">
+                      {visitLabels.map((lbl) => {
+                        const count =
+                          monthPoints.find((p) => p.visitType === lbl)
+                            ?.completedCount || 0;
+                        const pctHeight = (count / maxVal) * 100;
+                        const barColor = visitColorMap[lbl] || "bg-slate-400";
+
+                        return (
+                          <div
+                            key={lbl}
+                            className="flex flex-col justify-end items-center flex-1 h-full group relative"
+                          >
+                            {/* Inline Count Value Badge directly on top of active bars */}
+                            {count > 0 && (
+                              <span className="text-[9px] font-black text-slate-700 mb-1 absolute -top-4 transition-transform group-hover:scale-110">
+                                {count}
+                              </span>
+                            )}
+                            <div
+                              className={`w-full ${barColor} rounded-t-xs transition-all duration-500 shadow-2xs`}
+                              style={{
+                                height: `${Math.max(pctHeight, count > 0 ? 5 : 1)}%`,
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Month Label pinned directly under each grouped cluster */}
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase mt-2 tracking-wider">
+                      {mLabel}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Chart Legend Box */}
+            <div className="flex flex-wrap items-center justify-center gap-5 pt-2 text-[10px] font-bold text-slate-500">
+              {visitLabels.map((lbl) => (
+                <div key={lbl} className="flex items-center gap-1.5">
+                  <div
+                    className={`h-2.5 w-2.5 rounded-sm ${visitColorMap[lbl]}`}
+                  />
+                  <span>{lbl}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Top Performers Leaderboard Card */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 flex flex-col justify-between shadow-xs">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <Award className="h-4 w-4 text-amber-500" />
+              Top Performers Standings
+            </h3>
+            <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+              Rankings based on active staff completion success
+            </p>
+          </div>
+
+          <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[250px] my-4 pr-1">
+            {activeData.topPerformers?.length ? (
+              activeData.topPerformers.map((perf, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition"
+                >
+                  <div className="min-w-0 flex items-center gap-3">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-100 border border-slate-200/60 text-[10px] font-black text-slate-500">
+                      {i + 1}
+                    </span>
+                    <p className="text-xs font-bold text-slate-800 truncate">
+                      {perf.employeeName}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg flex flex-col items-center">
+                      <span className="text-[8px] uppercase tracking-wide text-slate-400 font-bold">
+                        Comp. Rate
+                      </span>
+                      {perf.completionRate}%
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-12 text-xs text-slate-400 font-medium italic">
+                No performer metrics recorded.
+              </div>
+            )}
+          </div>
+          <div className="text-[9px] text-center text-slate-400 font-bold tracking-wider uppercase pt-2 border-t border-slate-100">
+            Live Database Ledger Sync
+          </div>
+        </div>
+      </div>
+
+      {/* Visit Types Distribution Matrix Cards */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4 shadow-xs">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+          Visit Types Distribution Matrix
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {activeData.visitTypes.map((item, index) => (
+            <div
+              key={index}
+              className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/60 space-y-3 shadow-2xs hover:bg-slate-50 transition"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200/40 pb-2">
+                {/* Fixed explicitly missing card titles labels */}
+                <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                  {item.visitType || item.label}
+                </span>
+                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">
+                  {item.completionRate}% Rate
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline text-xs text-slate-400 font-semibold">
+                <span>
+                  Planned: <b className="text-slate-800">{item.planned}</b>
+                </span>
+                <span>
+                  Actual: <b className="text-slate-800">{item.actual}</b>
+                </span>
+              </div>
+              <div className="text-[10px] font-bold text-indigo-500/90 bg-indigo-50/40 border border-indigo-100/30 text-center rounded py-1">
+                Share of Total Visits: {item.percentage}%
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Industrial Area Geographic Metrics */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4 shadow-xs">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+          Industrial Area Coverage
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+              Total Areas
+            </p>
+            <p className="text-xl font-black text-slate-900 mt-1">
+              {activeData.areaCoverage.totalAreas}
+            </p>
+          </div>
+          <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+              Areas Visited
+            </p>
+            <p className="text-xl font-black text-slate-900 mt-1">
+              {activeData.areaCoverage.coveredAreas}
+            </p>
+          </div>
+          <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+              Coverage Rate
+            </p>
+            <p className="text-xl font-black text-indigo-600 mt-1">
+              {activeData.areaCoverage.coverageRate}%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Focus Area Metrics Bottom Ribbon Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white border border-slate-200/80 rounded-xl p-4 flex items-center justify-between shadow-2xs">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+              Total Focus Areas
+            </p>
+            <p className="text-base font-black text-slate-900 mt-0.5">
+              {activeData.focusAreaCoverage.totalFocusAreas}
+            </p>
+          </div>
+          <div className="p-2 rounded-lg bg-slate-50 border border-slate-100 text-slate-400">
+            <Building className="h-4 w-4" />
+          </div>
+        </div>
+        <div className="bg-white border border-slate-200/80 rounded-xl p-4 flex items-center justify-between shadow-2xs">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+              Focus Areas with Active Data
+            </p>
+            <p className="text-base font-black text-emerald-600 mt-0.5">
+              {activeData.focusAreaCoverage.areasCovered}
+            </p>
+          </div>
+          <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-500">
+            <CheckCircle2 className="h-4 w-4" />
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
-const MetricBox = ({ label, value }) => (
-  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
-    <p className="text-sm font-medium text-slate-500">{label}</p>
-    <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-      {value}
-    </p>
-  </div>
-);
-
-const SectionCard = ({ title, icon: Icon, children }) => (
-  <div className="rounded-[24px] border border-slate-200 bg-white p-5 md:p-6 shadow-sm">
-    <div className="mb-5 flex items-center gap-3">
-      {Icon ? (
-        <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700">
-          <Icon className="h-5 w-5" />
-        </div>
-      ) : null}
-      <div>
-        <h3 className="text-lg font-semibold tracking-tight text-slate-900">
-          {title}
-        </h3>
+const MetricCard = ({ label, value, icon: Icon, theme }) => {
+  const colorMap = {
+    indigo: "border-indigo-100 bg-indigo-50/40 text-indigo-600",
+    emerald: "border-emerald-100 bg-emerald-50/40 text-emerald-600",
+    orange: "border-orange-100 bg-orange-50/40 text-orange-600",
+    slate: "border-slate-200 bg-slate-50/50 text-slate-600",
+  };
+  return (
+    <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between hover:shadow-xs transition">
+      <div className="space-y-1">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+          {label}
+        </p>
+        <p className="text-xl font-black text-slate-900 tracking-tight">
+          {value}
+        </p>
+      </div>
+      <div
+        className={`p-2.5 border rounded-xl ${colorMap[theme] || colorMap.slate}`}
+      >
+        <Icon className="h-4 w-4" />
       </div>
     </div>
-    {children}
-  </div>
-);
-
-const EmptyState = ({ text }) => (
-  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center">
-    <p className="text-sm font-medium text-slate-500">{text}</p>
-  </div>
-);
+  );
+};
 
 export default OrgDashboardPage;

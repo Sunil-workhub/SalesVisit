@@ -4,8 +4,8 @@ import {
   TrendingUp,
   MapPin,
   Target,
-  CheckCircle,
-  Clock,
+  CheckCircle2,
+  Clock3,
   BarChart3,
   Users,
   Building,
@@ -14,6 +14,9 @@ import {
   Briefcase,
   ChevronLeft,
   ChevronRight,
+  Layers3,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import SalesVisitService from "../../services/salesVisit/SalesVisitService";
 
@@ -89,14 +92,29 @@ const DEFAULT_TEAM_DASHBOARD = {
   },
 };
 
+const FY_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+
 const SalesVisitTeamDashboardPage = () => {
   const [selectedTab, setSelectedTab] = useState("month");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [dashboardData, setDashboardData] = useState(DEFAULT_TEAM_DASHBOARD);
-  console.log("dashboardData", dashboardData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showNoDataAreas, setShowNoDataAreas] = useState(false);
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+
+  // Helper to determine the Financial Year string (e.g., FY 2025-26) based on selectedMonth key
+  const getDisplayFinancialYear = (monthKey) => {
+    if (!monthKey) return "";
+    const [year, month] = monthKey.split("-").map(Number);
+    if (month >= 1 && month <= 3) {
+      return `FY ${year - 1}-${String(year).slice(-2)}`;
+    }
+    return `FY ${year}-${String(year + 1).slice(-2)}`;
+  };
 
   useEffect(() => {
     const now = new Date();
@@ -122,20 +140,15 @@ const SalesVisitTeamDashboardPage = () => {
         year: selectedYear,
       });
 
-      console.log("response", response);
-      // response.data = APIResponseModel { status_Code, status, message, data }
-      // response.data.data = { monthly, ytd }
-      const payload = response?.data;
-      
+      const payload = response?.data?.data || response?.data || {};
+
       if (!payload?.monthly && !payload?.ytd) {
         setDashboardData(DEFAULT_TEAM_DASHBOARD);
         return;
       }
 
       const m = payload.monthly || {};
-      console.log("Monthly Data:", m);
       const y = payload.ytd || {};
-      console.log("YTD Data:", y);
 
       setDashboardData({
         monthly: {
@@ -196,21 +209,29 @@ const SalesVisitTeamDashboardPage = () => {
 
   const navigateMonth = (direction) => {
     const [year, month] = selectedMonth.split("-").map(Number);
+    const currentIdx = FY_MONTHS.indexOf(month);
+    let newMonthIdx = direction === "next" ? currentIdx + 1 : currentIdx - 1;
     let newYear = year;
-    let newMonth = month;
 
-    if (direction === "next") {
-      newMonth += 1;
-      if (newMonth > 12) {
-        newMonth = 1;
-        newYear += 1;
-      }
-    } else {
-      newMonth -= 1;
-      if (newMonth < 1) {
-        newMonth = 12;
-        newYear -= 1;
-      }
+    if (newMonthIdx > 11) {
+      newMonthIdx = 0;
+      newYear += 1;
+    } else if (newMonthIdx < 0) {
+      newMonthIdx = 11;
+      newYear -= 1;
+    }
+
+    const newMonth = FY_MONTHS[newMonthIdx];
+
+    // Explicit cross-year calendar navigation rules
+    if (month === 12 && newMonth === 1) {
+      newYear = year + 1;
+    } else if (month === 1 && newMonth === 12) {
+      newYear = year - 1;
+    } else if (month === 4 && newMonth === 3) {
+      newYear = year;
+    } else if (month === 3 && newMonth === 4) {
+      newYear = year;
     }
 
     const monthKey = `${newYear}-${String(newMonth).padStart(2, "0")}`;
@@ -225,13 +246,11 @@ const SalesVisitTeamDashboardPage = () => {
     return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   };
 
-  const getFinancialYearLabel = () => {
-    const today = new Date();
-    const currentMonth = today.getMonth() + 1;
-    const currentYear = today.getFullYear();
-    const fyStart = currentMonth >= 4 ? currentYear : currentYear - 1;
-    const fyEnd = currentMonth >= 4 ? currentYear + 1 : currentYear;
-    return `${fyStart}-${String(fyEnd).slice(-2)}`;
+  const handleYearChange = (e) => {
+    const targetYear = parseInt(e.target.value, 10);
+    const [, currentMonthStr] = selectedMonth.split("-");
+    setSelectedYear(targetYear);
+    setSelectedMonth(`${targetYear}-${currentMonthStr}`);
   };
 
   const getVisitTypeLabel = (type) => {
@@ -253,605 +272,712 @@ const SalesVisitTeamDashboardPage = () => {
     }
   };
 
-  const getVisitTypeColor = (type) => {
-    switch (type) {
-      case "BD_VISIT":
-      case "BDVISIT":
-        return "bg-blue-50 text-blue-700 border-blue-200";
-      case "ABP_VISIT":
-      case "ABPVISIT":
-        return "bg-purple-50 text-purple-700 border-purple-200";
-      case "ONGOING_DEAL":
-      case "ONGOINGDEAL":
-        return "bg-orange-50 text-orange-700 border-orange-200";
-      case "KEY_ACCOUNT":
-      case "KEYACCOUNT":
-        return "bg-green-50 text-green-700 border-green-200";
-      default:
-        return "bg-gray-50 text-gray-700 border-gray-200";
-    }
-  };
-
   const activeData =
     (selectedTab === "month" ? dashboardData?.monthly : dashboardData?.ytd) ||
     DEFAULT_TEAM_DASHBOARD.monthly;
   const summaryPrefix = selectedTab === "month" ? "" : "YTD ";
 
+  // FIX: Sum total completed visits across all categories to get accurate actual denominator
+  const totalTeamCompletedVisits =
+    activeData.visitTypes?.reduce((acc, item) => acc + (item.actual || 0), 0) ||
+    0;
+
+  // Segmenting focus areas into data-containing vs empty variants
+  const areasWithData =
+    activeData?.areaCoverage?.focusAreaStats?.filter(
+      (area) => (area.totalVisits || 0) > 0,
+    ) || [];
+  const areasWithoutData =
+    activeData?.areaCoverage?.focusAreaStats?.filter(
+      (area) => (area.totalVisits || 0) === 0,
+    ) || [];
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading team dashboard data...</p>
+      <div className="min-h-[320px] rounded-[28px] border border-slate-200 bg-white/80 shadow-sm backdrop-blur-sm">
+        <div className="flex h-[320px] items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full border-4 border-slate-200 border-t-slate-900 animate-spin" />
+            <p className="text-sm font-medium text-slate-600">
+              Loading team dashboard...
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Team Dashboard</h1>
-          <p className="text-sm text-gray-500">
-            Team performance analytics excluding self
-          </p>
-        </div>
-        <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <Users className="h-4 w-4" />
-          <span>
-            {activeData?.summary?.totalMembers || 0} team member
-            {(activeData?.summary?.totalMembers || 0) !== 1 ? "s" : ""}
-          </span>
-        </div>
-      </div>
-
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="border-b border-gray-200 px-6">
-          <nav className="flex space-x-8">
-            {[
-              { id: "month", label: "Monthly View", icon: Calendar },
-              { id: "ytd", label: "Year to Date", icon: TrendingUp },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setSelectedTab(tab.id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center space-x-2 ${
-                    selectedTab === tab.id
-                      ? "border-blue-500 text-blue-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-2">
-              <button
-                onClick={() => navigateMonth("prev")}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-
-              <div className="text-center">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {selectedTab === "month"
-                    ? formatMonth(selectedMonth)
-                    : `FY ${getFinancialYearLabel()}`}
-                </h2>
-                <p className="text-sm text-gray-500">
-                  {selectedTab === "month"
-                    ? `${activeData?.summary?.totalVisits || 0} business visits planned`
-                    : "Year to date team performance"}
+    <div className="min-h-screen bg-[#f6f8fb] -m-4 md:-m-6 p-4 md:p-6">
+      <div className="space-y-6">
+        {/* Dynamic Header Block */}
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+          <div className="relative px-5 py-6 md:px-8 md:py-8">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.10),_transparent_35%),radial-gradient(circle_at_left,_rgba(99,102,241,0.06),_transparent_30%)]" />
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
+                  Team Dashboard
+                </h1>
+                <p className="text-sm mt-1 font-medium text-slate-500 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-indigo-500" />
+                  Performance metrics for{" "}
+                  {activeData?.summary?.totalMembers || 0} team member
+                  {(activeData?.summary?.totalMembers || 0) !== 1
+                    ? "s"
+                    : ""}{" "}
+                  (excluding self)
                 </p>
               </div>
 
-              <button
-                onClick={() => navigateMonth("next")}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
+              <div className="flex flex-wrap items-center gap-4">
+                {/* FIX: Formatted selection labels as Financial Year */}
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="year-select"
+                    className="text-sm font-medium text-slate-600"
+                  >
+                    Financial Year:
+                  </label>
+                  <select
+                    id="year-select"
+                    value={selectedYear}
+                    onChange={handleYearChange}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-slate-400"
+                  >
+                    {yearOptions.map((year) => (
+                      <option key={year} value={year}>
+                        FY {year}-{String(year + 1).slice(-2)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1.5 shadow-inner">
+                  <button
+                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+                      selectedTab === "month"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                    onClick={() => setSelectedTab("month")}
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Monthly
+                  </button>
+                  {/* FIX: Label toggled to YTD */}
+                  <button
+                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+                      selectedTab === "ytd"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                    onClick={() => setSelectedTab("ytd")}
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    YTD
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-            <MetricCard
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="rounded-[28px] border border-slate-200 bg-white p-4 md:p-6 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+          {/* Controls Controls Panel */}
+          <div className="flex items-center justify-between rounded-[22px] border border-slate-200 bg-slate-50 px-3 py-3 md:px-4 md:py-4">
+            <button
+              onClick={() => navigateMonth("prev")}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:text-slate-800 hover:shadow"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <div className="text-center px-3">
+              <h2 className="text-lg md:text-xl font-semibold tracking-tight text-slate-900">
+                {formatMonth(selectedMonth)}
+              </h2>
+              {/* FIX: Dynamic short duration indicator for Financial Year alignment */}
+              <div className="mt-1 flex flex-col items-center gap-1">
+                <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
+                  Duration View: {getDisplayFinancialYear(selectedMonth)}
+                </span>
+                <p className="text-xs text-slate-400">
+                  {selectedTab === "month"
+                    ? "Team Monthly Summary (Financial Calendar)"
+                    : "Team YTD summary till selected month"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigateMonth("next")}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:text-slate-800 hover:shadow"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Metric Cards Grid */}
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <SummaryCard
               title={`${summaryPrefix}Total Planned`}
-              value={activeData?.summary?.totalVisits || 0}
-              note="Business visits planned"
-              icon={selectedTab === "month" ? Calendar : TrendingUp}
-              color="blue"
+              value={activeData?.summary?.plannedVisits || 0}
+              icon={Layers3}
+              tone="slate"
             />
-            <MetricCard
+            <SummaryCard
               title={`${summaryPrefix}Completed`}
               value={activeData?.summary?.completedVisits || 0}
-              note={`${Number(activeData?.summary?.completionRate || 0).toFixed(1)}% of business visits`}
-              icon={selectedTab === "month" ? CheckCircle : Award}
-              color="green"
+              icon={CheckCircle2}
+              tone="green"
+              subtitle={`${Number(activeData?.summary?.completionRate || 0).toFixed(1)}% Completion Rate`}
             />
-            <MetricCard
+            <SummaryCard
               title={`${summaryPrefix}Pending`}
-              value={activeData?.summary?.plannedVisits || 0}
-              note="Remaining business visits"
-              icon={selectedTab === "month" ? Clock : Target}
-              color="yellow"
+              value={activeData?.summary?.pendingPlans || 0}
+              icon={Clock3}
+              tone="amber"
             />
-            <MetricCard
+            <SummaryCard
               title={`${summaryPrefix}Visit Days`}
               value={activeData?.summary?.uniqueVisitDays || 0}
-              note="Days with business visits"
-              icon={selectedTab === "month" ? Briefcase : Activity}
-              color="purple"
+              icon={Briefcase}
+              tone="blue"
             />
           </div>
 
-          <SectionCard
-            title={
-              selectedTab === "month"
-                ? `Visit Types - ${formatMonth(selectedMonth)}`
-                : `Visit Types - FY ${getFinancialYearLabel()}`
-            }
-            subtitle="Team planned vs actual performance by visit type"
-            icon={BarChart3}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {(activeData?.visitTypes || []).map((item, index) => (
-                <div
-                  key={index}
-                  className={`p-4 rounded-lg border ${getVisitTypeColor(item.visitType)}`}
-                >
-                  <h4 className="font-medium mb-3">
-                    {getVisitTypeLabel(item.visitType)}
-                  </h4>
-                  <div className="space-y-2">
-                    <Row label="Planned" value={item.planned || 0} />
-                    <Row
-                      label={selectedTab === "month" ? "Actual" : "Completed"}
-                      value={item.actual || 0}
-                    />
-                    <Row
-                      label="Completion"
-                      value={`${Number(item.completionRate || 0).toFixed(1)}%`}
-                    />
-                    {selectedTab === "ytd" ? (
-                      <Row
-                        label="% of Total"
-                        value={`${Number(item.percentage || 0).toFixed(1)}%`}
-                      />
-                    ) : null}
-                    <div className="w-full bg-white bg-opacity-50 rounded-full h-2 mt-2">
+          <div className="mt-6 space-y-6">
+            {/* Visit Types */}
+            <SectionCard title="Team Visit Types Breakdown" icon={BarChart3}>
+              {activeData.visitTypes?.length ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                  {activeData.visitTypes.map((item, index) => {
+                    // FIX: Re-calculated share logs exclusively based on completed actions
+                    const sharePercentage =
+                      totalTeamCompletedVisits > 0
+                        ? (
+                            (item.actual / totalTeamCompletedVisits) *
+                            100
+                          ).toFixed(1)
+                        : "0.0";
+
+                    return (
                       <div
-                        className="bg-current h-2 rounded-full opacity-70"
-                        style={{
-                          width: `${Math.min(Number(item.completionRate || 0), 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title={`${summaryPrefix}Team Industrial Area Coverage`}
-            subtitle={
-              selectedTab === "month"
-                ? `Coverage data for ${formatMonth(selectedMonth)}`
-                : "Year to date coverage"
-            }
-            icon={MapPin}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              <CenterMetric
-                label="Assigned Areas"
-                value={activeData?.areaCoverage?.totalAreas || 0}
-                color="text-blue-600"
-              />
-              <CenterMetric
-                label="Areas Visited"
-                value={activeData?.areaCoverage?.coveredAreas || 0}
-                color="text-green-600"
-              />
-              <CenterMetric
-                label="Coverage Rate"
-                value={`${Number(activeData?.areaCoverage?.coverageRate || 0).toFixed(1)}%`}
-                color="text-purple-600"
-              />
-            </div>
-
-            <div className="border-t border-gray-200 pt-6">
-              <h4 className="text-md font-medium text-gray-900 mb-4">
-                {selectedTab === "month"
-                  ? "Coverage by Potential"
-                  : "YTD Coverage by Potential"}
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {(activeData?.areaCoverage?.byPotential || []).map(
-                  (item, index) => (
-                    <div
-                      key={index}
-                      className={`p-4 rounded-lg border ${
-                        item.potential === "High"
-                          ? "bg-green-50 border-green-200"
-                          : item.potential === "Medium"
-                            ? "bg-yellow-50 border-yellow-200"
-                            : "bg-red-50 border-red-200"
-                      }`}
-                    >
-                      <h5
-                        className={`font-medium mb-2 ${
-                          item.potential === "High"
-                            ? "text-green-700"
-                            : item.potential === "Medium"
-                              ? "text-yellow-700"
-                              : "text-red-700"
-                        }`}
+                        key={index}
+                        className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm flex flex-col justify-between"
                       >
-                        {item.potential} Potential
-                      </h5>
-                      <div className="space-y-1 text-sm">
-                        <Row label="Total" value={item.totalAreas || 0} />
-                        <Row label="Covered" value={item.coveredAreas || 0} />
-                        <Row
-                          label="Rate"
-                          value={`${Number(item.coverageRate || 0).toFixed(1)}%`}
-                        />
+                        <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-bold text-slate-700 truncate">
+                              {getVisitTypeLabel(item.visitType)}
+                            </p>
+                            <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 border border-slate-200">
+                              Comp:{" "}
+                              {Number(item.completionRate || 0).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="mt-4 space-y-2">
+                            <div className="flex items-end justify-between">
+                              <span className="text-xs text-slate-500">
+                                Planned
+                              </span>
+                              <span className="text-lg font-semibold text-slate-900">
+                                {item.planned || 0}
+                              </span>
+                            </div>
+                            <div className="flex items-end justify-between">
+                              <span className="text-xs text-slate-500">
+                                Completed
+                              </span>
+                              <span className="text-lg font-semibold text-slate-900">
+                                {item.actual || 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-slate-200/60">
+                          <div className="flex items-center justify-between text-xs font-medium">
+                            <span className="text-slate-500">
+                              Share of Completed Visits:
+                            </span>
+                            <span className="text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
+                              {sharePercentage}%
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <div className="h-2 rounded-full bg-slate-200">
+                              {/* FIX: Progress bar filled capacity now scales dynamically to complete visual share matches */}
+                              <div
+                                className="h-2 rounded-full bg-indigo-600"
+                                style={{
+                                  width: `${Math.min(parseFloat(sharePercentage), 100)}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="w-full bg-white bg-opacity-50 rounded-full h-2 mt-3">
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState text="No visit type data available for this period." />
+              )}
+            </SectionCard>
+
+            {/* Industrial Area Coverage */}
+            <SectionCard
+              title={`${summaryPrefix}Team Industrial Area Coverage`}
+              icon={MapPin}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <MetricBox
+                  label="Assigned Areas"
+                  value={activeData?.areaCoverage?.totalAreas || 0}
+                />
+                <MetricBox
+                  label="Areas Visited"
+                  value={activeData?.areaCoverage?.coveredAreas || 0}
+                />
+                <MetricBox
+                  label="Coverage Rate"
+                  value={`${Number(activeData?.areaCoverage?.coverageRate || 0).toFixed(1)}%`}
+                />
+              </div>
+
+              <div className="border-t border-slate-200 pt-5">
+                <h4 className="text-sm font-bold text-slate-800 mb-4">
+                  Coverage Depth Segments by Target Potential
+                </h4>
+                {activeData?.areaCoverage?.byPotential?.length ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {activeData.areaCoverage.byPotential.map((item, index) => {
+                      const highlightTheme =
+                        item.potential === "High"
+                          ? "from-emerald-600 to-teal-500 text-emerald-700 bg-emerald-50/50 border-emerald-200"
+                          : item.potential === "Medium"
+                            ? "from-amber-500 to-orange-400 text-amber-700 bg-amber-50/50 border-amber-200"
+                            : "from-rose-500 to-red-400 text-rose-700 bg-rose-50/50 border-rose-200";
+                      return (
                         <div
-                          className={`h-2 rounded-full ${
-                            item.potential === "High"
-                              ? "bg-green-600"
-                              : item.potential === "Medium"
-                                ? "bg-yellow-600"
-                                : "bg-red-600"
-                          }`}
-                          style={{
-                            width: `${Math.min(Number(item.coverageRate || 0), 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ),
+                          key={index}
+                          className="rounded-2xl border p-4 bg-white shadow-sm flex flex-col justify-between"
+                        >
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${highlightTheme.split(" ")[2]} ${highlightTheme.split(" ")[3]}`}
+                            >
+                              {item.potential} Potential
+                            </span>
+                            <span className="text-sm font-bold text-slate-900">
+                              {Number(item.coverageRate || 0).toFixed(1)}%
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium mb-3">
+                            {item.coveredAreas || 0} / {item.totalAreas || 0}{" "}
+                            Regions Engaged
+                          </p>
+                          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className={`h-2 rounded-full bg-gradient-to-r ${highlightTheme.split(" ")[0]} ${highlightTheme.split(" ")[1]}`}
+                              style={{
+                                width: `${Math.min(item.coverageRate || 0, 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <EmptyState text="No segment details available for current data limits." />
                 )}
               </div>
+            </SectionCard>
 
-              <div className="mt-4">
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full"
-                    style={{
-                      width: `${Math.min(Number(activeData?.areaCoverage?.coverageRate || 0), 100)}%`,
-                    }}
+            {/* Analysis Grid Sections */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <SectionCard
+                title="Focus Area Engagement Analysis"
+                icon={Activity}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <MetricBox
+                    label="Total Focus Areas"
+                    value={
+                      activeData?.areaCoverage?.focusAreaCoverage
+                        ?.totalFocusAreas || 0
+                    }
+                  />
+                  <MetricBox
+                    label="Areas Covered"
+                    value={
+                      activeData?.areaCoverage?.focusAreaCoverage
+                        ?.areasCovered || 0
+                    }
+                  />
+                  <MetricBox
+                    label="Coverage Rate"
+                    value={`${Number(activeData?.areaCoverage?.focusAreaCoverage?.coverageRate || 0).toFixed(1)}%`}
+                  />
+                  <MetricBox
+                    label="Avg Visits / Area"
+                    value={Number(
+                      activeData?.areaCoverage?.focusAreaCoverage
+                        ?.avgVisitsPerArea || 0,
+                    ).toFixed(1)}
                   />
                 </div>
-              </div>
-            </div>
-          </SectionCard>
+              </SectionCard>
 
-          <SectionCard
-            title={
-              selectedTab === "month"
-                ? `Team Focus Area Coverage Analysis - ${formatMonth(selectedMonth)}`
-                : `Team Focus Area Coverage Analysis - FY ${getFinancialYearLabel()}`
-            }
-            subtitle="Strategic area penetration and engagement depth analysis for your team"
-            icon={Building}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <StatBox
-                label="Total Focus Areas"
-                value={
-                  activeData?.areaCoverage?.focusAreaCoverage
-                    ?.totalFocusAreas || 0
-                }
-                boxClass="bg-blue-50 border-blue-200"
-                textClass="text-blue-700"
-                valueClass="text-blue-600"
-              />
-              <StatBox
-                label="Areas Covered"
-                value={
-                  activeData?.areaCoverage?.focusAreaCoverage?.areasCovered || 0
-                }
-                boxClass="bg-green-50 border-green-200"
-                textClass="text-green-700"
-                valueClass="text-green-600"
-              />
-              <StatBox
-                label="Coverage Rate"
-                value={`${Number(activeData?.areaCoverage?.focusAreaCoverage?.coverageRate || 0).toFixed(1)}%`}
-                boxClass="bg-purple-50 border-purple-200"
-                textClass="text-purple-700"
-                valueClass="text-purple-600"
-              />
-              <StatBox
-                label="Avg Visits/Area"
-                value={Number(
-                  activeData?.areaCoverage?.focusAreaCoverage
-                    ?.avgVisitsPerArea || 0,
-                ).toFixed(1)}
-                boxClass="bg-orange-50 border-orange-200"
-                textClass="text-orange-700"
-                valueClass="text-orange-600"
-              />
+              <SectionCard
+                title="Coverage Density Depth Matrix"
+                icon={Building}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <DensityMetricBox
+                    label="Deep Coverage"
+                    hint={selectedTab === "month" ? "5+ visits" : "8+ visits"}
+                    value={
+                      activeData?.areaCoverage?.focusAreaCoverage
+                        ?.deepCoverage || 0
+                    }
+                    tone="emerald"
+                  />
+                  <DensityMetricBox
+                    label="Moderate Coverage"
+                    hint={selectedTab === "month" ? "2-4 visits" : "3-7 visits"}
+                    value={
+                      activeData?.areaCoverage?.focusAreaCoverage
+                        ?.moderateCoverage || 0
+                    }
+                    tone="blue"
+                  />
+                  <DensityMetricBox
+                    label="Light Coverage"
+                    hint={selectedTab === "month" ? "1 visit" : "1-2 visits"}
+                    value={
+                      activeData?.areaCoverage?.focusAreaCoverage
+                        ?.lightCoverage || 0
+                    }
+                    tone="amber"
+                  />
+                  <DensityMetricBox
+                    label="No Coverage"
+                    hint="0 active visits"
+                    value={
+                      activeData?.areaCoverage?.focusAreaCoverage?.noCoverage ||
+                      0
+                    }
+                    tone="rose"
+                  />
+                </div>
+              </SectionCard>
             </div>
 
-            <div className="border-t border-gray-200 pt-6">
-              <h4 className="text-md font-medium text-gray-900 mb-4">
-                Coverage Depth Analysis
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <DepthBox
-                  label="Deep Coverage"
-                  hint={selectedTab === "month" ? "5+ visits" : "8+ visits"}
-                  value={
-                    activeData?.areaCoverage?.focusAreaCoverage?.deepCoverage ||
-                    0
-                  }
-                  className="bg-emerald-50 border-emerald-200 text-emerald-700"
-                  valueClass="text-emerald-600"
-                />
-                <DepthBox
-                  label="Moderate Coverage"
-                  hint={selectedTab === "month" ? "2-4 visits" : "3-7 visits"}
-                  value={
-                    activeData?.areaCoverage?.focusAreaCoverage
-                      ?.moderateCoverage || 0
-                  }
-                  className="bg-blue-50 border-blue-200 text-blue-700"
-                  valueClass="text-blue-600"
-                />
-                <DepthBox
-                  label="Light Coverage"
-                  hint={selectedTab === "month" ? "1 visit" : "1-2 visits"}
-                  value={
-                    activeData?.areaCoverage?.focusAreaCoverage
-                      ?.lightCoverage || 0
-                  }
-                  className="bg-yellow-50 border-yellow-200 text-yellow-700"
-                  valueClass="text-yellow-600"
-                />
-                <DepthBox
-                  label="No Coverage"
-                  hint="0 visits"
-                  value={
-                    activeData?.areaCoverage?.focusAreaCoverage?.noCoverage || 0
-                  }
-                  className="bg-red-50 border-red-200 text-red-700"
-                  valueClass="text-red-600"
-                />
-              </div>
-
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-700">
-                    {selectedTab === "month"
-                      ? "Team Focus Area Coverage Progress"
-                      : "YTD Team Focus Area Coverage Progress"}
-                  </span>
-                  <span className="text-sm text-gray-500">
+            {/* Focus Progress Slider Track */}
+            <SectionCard
+              title={`${summaryPrefix}Strategic Team Focus Progression`}
+              icon={TrendingUp}
+            >
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-4">
+                  <p className="text-sm text-slate-600 font-medium">
                     {activeData?.areaCoverage?.focusAreaCoverage
                       ?.areasCovered || 0}{" "}
                     of{" "}
                     {activeData?.areaCoverage?.focusAreaCoverage
                       ?.totalFocusAreas || 0}{" "}
-                    areas covered
-                  </span>
+                    core targets engaged
+                  </p>
+                  <p className="text-sm font-bold text-slate-900">
+                    {Number(
+                      activeData?.areaCoverage?.focusAreaCoverage
+                        ?.coverageRate || 0,
+                    ).toFixed(1)}
+                    %
+                  </p>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
+                <div className="h-3 rounded-full bg-slate-200 overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-green-500 to-blue-500 h-3 rounded-full"
+                    className="h-3 rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600"
                     style={{
-                      width: `${Math.min(
-                        Number(
-                          activeData?.areaCoverage?.focusAreaCoverage
-                            ?.coverageRate || 0,
-                        ),
-                        100,
-                      )}%`,
+                      width: `${Math.min(Number(activeData?.areaCoverage?.focusAreaCoverage?.coverageRate || 0), 100)}%`,
                     }}
                   />
                 </div>
               </div>
-            </div>
-          </SectionCard>
+            </SectionCard>
 
-          <SectionCard
-            title={
-              selectedTab === "month"
-                ? `Team Focus Areas - ${formatMonth(selectedMonth)}`
-                : `Team Focus Areas - FY ${getFinancialYearLabel()}`
-            }
-            subtitle="Performance in focus areas assigned to your team"
-            icon={Users}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {(activeData?.areaCoverage?.focusAreaStats || []).map(
-                (focusArea, index) => (
-                  <div
-                    key={index}
-                    className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900">
-                          {focusArea.areaName}
-                        </h4>
-                        <p className="text-sm text-gray-500">
-                          {focusArea.city}, {focusArea.state}
-                        </p>
-                        <span
-                          className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border mt-1 ${
-                            focusArea.potential === "High"
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : focusArea.potential === "Medium"
-                                ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                : "bg-red-50 text-red-700 border-red-200"
-                          }`}
-                        >
-                          {focusArea.potential} Potential
-                        </span>
-                      </div>
+            {/* Team Focus Areas */}
+            <SectionCard title="Team Strategic Focus Profiles" icon={Users}>
+              {activeData?.areaCoverage?.focusAreaStats?.length ? (
+                <div className="space-y-6">
+                  {areasWithData.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {areasWithData.map((focusArea, index) => (
+                        <TeamFocusAreaCard
+                          key={`active-${index}`}
+                          focusArea={focusArea}
+                        />
+                      ))}
                     </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 italic">
+                      No active focus areas with team visit metrics found.
+                    </p>
+                  )}
 
-                    <div className="space-y-2 mb-3">
-                      <Row
-                        label={
-                          selectedTab === "month" ? "Visits" : "YTD Visits"
-                        }
-                        value={focusArea.totalVisits || 0}
-                      />
-                      <Row
-                        label="Completed"
-                        value={focusArea.completedVisits || 0}
-                      />
-                      <Row
-                        label="Success Rate"
-                        value={`${Number(focusArea.coverageRate || 0).toFixed(1)}%`}
-                      />
-                    </div>
-
-                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                      <div
-                        className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full"
-                        style={{
-                          width: `${Math.min(Number(focusArea.coverageRate || 0), 100)}%`,
-                        }}
-                      />
-                    </div>
-
-                    {focusArea.assignedUsers &&
-                    focusArea.assignedUsers.length > 0 ? (
-                      <div>
-                        <p className="text-xs font-medium text-gray-700 mb-1">
-                          Team Members
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {focusArea.assignedUsers.map(
-                            (assignedUser, userIndex) => (
-                              <span
-                                key={userIndex}
-                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-full border border-blue-200"
-                              >
-                                {assignedUser.name}
-                              </span>
-                            ),
+                  {areasWithoutData.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <button
+                        onClick={() => setShowNoDataAreas(!showNoDataAreas)}
+                        className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm border border-slate-200 transition hover:bg-slate-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>
+                            Areas Without Active Team Data (
+                            {areasWithoutData.length})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                          {showNoDataAreas ? (
+                            <>
+                              <EyeOff className="h-4 w-4" /> Hide Section
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="h-4 w-4" /> View Section
+                            </>
                           )}
                         </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ),
+                      </button>
+
+                      {showNoDataAreas && (
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 transition-all duration-300">
+                          {areasWithoutData.map((focusArea, index) => (
+                            <TeamFocusAreaCard
+                              key={`empty-${index}`}
+                              focusArea={focusArea}
+                              opacityClass="opacity-75"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <EmptyState text="No allocated regional focus logs established for this corporate sector." />
               )}
-            </div>
-          </SectionCard>
+            </SectionCard>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-const MetricCard = ({ title, value, note, icon: Icon, color = "blue" }) => {
-  const colorMap = {
-    blue: {
-      box: "bg-blue-50",
-      icon: "text-blue-600",
-      note: "text-blue-600",
-    },
-    green: {
-      box: "bg-green-50",
-      icon: "text-green-600",
-      note: "text-green-600",
-    },
-    yellow: {
-      box: "bg-yellow-50",
-      icon: "text-yellow-600",
-      note: "text-yellow-600",
-    },
-    purple: {
-      box: "bg-purple-50",
-      icon: "text-purple-600",
-      note: "text-purple-600",
-    },
-  };
-
-  const scheme = colorMap[color] || colorMap.blue;
-
-  return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          <p className={`text-xs flex items-center mt-1 ${scheme.note}`}>
-            {note}
+const TeamFocusAreaCard = ({ focusArea, opacityClass = "" }) => (
+  <div
+    className={`group rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md flex flex-col justify-between ${opacityClass}`}
+  >
+    <div>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <h4 className="font-semibold text-slate-900 truncate">
+            {focusArea.areaName}
+          </h4>
+          <p className="text-xs font-medium text-slate-500">
+            {focusArea.city}, {focusArea.state}
           </p>
         </div>
-        <div className={`p-3 rounded-lg ${scheme.box}`}>
-          {Icon ? <Icon className={`h-6 w-6 ${scheme.icon}`} /> : null}
+        <span
+          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+            focusArea.potential === "High"
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : focusArea.potential === "Medium"
+                ? "bg-amber-50 text-amber-700 border-amber-200"
+                : "bg-rose-50 text-rose-700 border-rose-200"
+          }`}
+        >
+          {focusArea.potential}
+        </span>
+      </div>
+
+      <div className="space-y-2 text-xs border-t border-slate-100 pt-3 mb-4">
+        <div className="flex items-center justify-between">
+          <span className="text-slate-500 font-medium">Planned Visits</span>
+          <span className="font-semibold text-slate-900">
+            {focusArea.totalVisits || 0}
+          </span>
         </div>
+        <div className="flex items-center justify-between">
+          <span className="text-slate-500 font-medium">Completed Log</span>
+          <span className="font-semibold text-emerald-600">
+            {focusArea.completedVisits || 0}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-slate-500 font-medium">Engagement Scale</span>
+          <span className="font-semibold text-indigo-600">
+            {Number(focusArea.coverageRate || 0).toFixed(1)}%
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-4">
+        <div
+          className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-indigo-500"
+          style={{
+            width: `${Math.min(Number(focusArea.coverageRate || 0), 100)}%`,
+          }}
+        />
+      </div>
+
+      {focusArea.assignedUsers?.length > 0 ? (
+        <div className="pt-2 border-t border-slate-100">
+          <p className="text-[11px] font-bold text-slate-400 tracking-wider uppercase mb-1.5">
+            Assigned Officers
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {focusArea.assignedUsers.map((user, uIdx) => (
+              <span
+                key={uIdx}
+                className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium bg-slate-50 text-slate-600 rounded-md border border-slate-200"
+              >
+                {user.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  </div>
+);
+
+const SummaryCard = ({
+  title,
+  value,
+  tone = "slate",
+  icon: Icon,
+  subtitle,
+}) => {
+  const toneMap = {
+    slate: {
+      wrap: "border-slate-200 bg-white",
+      icon: "bg-slate-100 text-slate-700",
+      text: "text-slate-900",
+      label: "text-slate-500",
+    },
+    green: {
+      wrap: "border-emerald-200 bg-emerald-50/60",
+      icon: "bg-emerald-100 text-emerald-700",
+      text: "text-emerald-900",
+      label: "text-emerald-700/80",
+    },
+    amber: {
+      wrap: "border-amber-200 bg-amber-50/70",
+      icon: "bg-amber-100 text-amber-700",
+      text: "text-amber-900",
+      label: "text-amber-700/80",
+    },
+    blue: {
+      wrap: "border-sky-200 bg-sky-50/70",
+      icon: "bg-sky-100 text-sky-700",
+      text: "text-sky-900",
+      label: "text-sky-700/80",
+    },
+  };
+  const styles = toneMap[tone] || toneMap.slate;
+
+  return (
+    <div
+      className={`rounded-[22px] border p-5 shadow-sm transition-all hover:shadow-md ${styles.wrap}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className={`text-sm font-medium ${styles.label}`}>{title}</p>
+          <p
+            className={`mt-3 text-3xl font-bold tracking-tight ${styles.text}`}
+          >
+            {value}
+          </p>
+          {subtitle && (
+            <p className="text-xs mt-1.5 font-medium text-slate-500">
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {Icon && (
+          <div className={`rounded-2xl p-3 shrink-0 ${styles.icon}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-const SectionCard = ({ title, subtitle, icon: Icon, children }) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-    <div className="flex items-center gap-2 mb-1">
-      {Icon ? <Icon className="h-5 w-5 text-blue-600" /> : null}
-      <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+const MetricBox = ({ label, value }) => (
+  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+      {label}
+    </p>
+    <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+      {value}
+    </p>
+  </div>
+);
+
+const DensityMetricBox = ({ label, hint, value, tone = "blue" }) => {
+  const configurationMap = {
+    emerald:
+      "bg-emerald-50/60 border-emerald-200 text-emerald-800 value-emerald-600",
+    blue: "bg-blue-50/60 border-blue-200 text-blue-800 value-blue-600",
+    amber: "bg-amber-50/60 border-amber-200 text-amber-800 value-amber-600",
+    rose: "bg-rose-50/60 border-rose-200 text-rose-800 value-rose-600",
+  };
+  const styles = configurationMap[tone] || configurationMap.blue;
+  const valColor = styles.split(" ")[3].replace("value-", "text-");
+
+  return (
+    <div
+      className={`rounded-2xl border p-4 text-center shadow-sm ${styles.split(" ").slice(0, 3).join(" ")}`}
+    >
+      <p className={`text-2xl font-bold ${valColor}`}>{value}</p>
+      <p className="text-sm font-bold mt-1 text-slate-800">{label}</p>
+      <p className="text-xs font-medium text-slate-500 mt-0.5">{hint}</p>
     </div>
-    {subtitle ? <p className="text-sm text-gray-500 mb-4">{subtitle}</p> : null}
+  );
+};
+
+const SectionCard = ({ title, icon: Icon, children }) => (
+  <div className="rounded-[24px] border border-slate-200 bg-white p-5 md:p-6 shadow-sm">
+    <div className="mb-5 flex items-center gap-3">
+      {Icon && (
+        <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700">
+          <Icon className="h-5 w-5" />
+        </div>
+      )}
+      <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+        {title}
+      </h3>
+    </div>
     {children}
   </div>
 );
 
-const Row = ({ label, value }) => (
-  <div className="flex justify-between items-center">
-    <span className="text-sm text-gray-600">{label}</span>
-    <span className="font-semibold text-gray-900">{value}</span>
-  </div>
-);
-
-const CenterMetric = ({ label, value, color = "text-blue-600" }) => (
-  <div className="text-center">
-    <p className={`text-2xl font-bold ${color}`}>{value}</p>
-    <p className="text-sm text-gray-600">{label}</p>
-  </div>
-);
-
-const StatBox = ({ label, value, boxClass, textClass, valueClass }) => (
-  <div className={`p-4 rounded-lg text-center border ${boxClass}`}>
-    <p className={`text-2xl font-bold ${valueClass}`}>{value}</p>
-    <p className={`text-sm ${textClass}`}>{label}</p>
-  </div>
-);
-
-const DepthBox = ({ label, hint, value, className, valueClass }) => (
-  <div className={`p-4 rounded-lg border ${className}`}>
-    <div className="text-center">
-      <p className={`text-xl font-bold ${valueClass}`}>{value}</p>
-      <p className="text-sm font-medium">{label}</p>
-      <p className="text-xs mt-1">{hint}</p>
-    </div>
+const EmptyState = ({ text }) => (
+  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center">
+    <p className="text-sm font-medium text-slate-400 italic">{text}</p>
   </div>
 );
 

@@ -39,6 +39,7 @@ const IndustrialAreasPage = () => {
   const user = sessionUser || null;
 
   const [areas, setAreas] = useState([]);
+  const [accessibleAreas, setAccessibleAreas] = useState([]); // Interim state for role security
   const [filteredAreas, setFilteredAreas] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   console.log("All users loaded:", allUsers);
@@ -97,17 +98,17 @@ const IndustrialAreasPage = () => {
     setCoverageOptions(uniqueCoverageValues);
   }, [areas]);
 
-  // Apply access control after both areas and users are loaded
+  // Step 1: Apply security access controls to raw data
   useEffect(() => {
     if (areas.length >= 0 && allUsers.length >= 0 && user) {
       applyAccessControl();
     }
   }, [areas, allUsers, user]);
 
-  // Apply filters whenever areas or filters change
+  // Step 2: Apply custom search filters to the accessible data subset
   useEffect(() => {
     applyFilters();
-  }, [areas, filters]);
+  }, [accessibleAreas, filters]);
 
   const loadUsers = async () => {
     try {
@@ -147,15 +148,14 @@ const IndustrialAreasPage = () => {
   const applyAccessControl = () => {
     if (!user) return;
 
-    let accessibleAreas = areas;
+    let accessible = areas;
 
     if (user.role === "management") {
-      // Management can see all areas
-      accessibleAreas = areas;
+      accessible = areas;
     } else if (user.role === "teammember" || user.role === "abpsalesperson") {
       const subordinateIds = getAllSubordinatesSync(user.id);
 
-      accessibleAreas = areas.filter((area) => {
+      accessible = areas.filter((area) => {
         const currentCoverage = area.currentCoverage || [];
 
         if (currentCoverage.includes(user.id)) {
@@ -173,44 +173,42 @@ const IndustrialAreasPage = () => {
       });
     }
 
-    setFilteredAreas(accessibleAreas);
+    setAccessibleAreas(accessible);
   };
 
   const loadAreas = async () => {
     if (!user) return;
 
+    let responseData = [];
     try {
       setLoading(true);
       setError(null);
 
       const response = await SalesVisitService.getIndustrialAreas();
-      const data = response?.data?.data || response?.data || [];
+      responseData = response?.data?.data || response?.data || [];
 
-      const allAreas = (data || []).map((area) => {
+      const allAreas = (responseData || []).map((area) => {
         const raw = area.currentCoverage || area.currentcoverage || [];
 
         let coverageArray = [];
 
         if (Array.isArray(raw)) {
-          // Case like: ["[\"High\"", "\"id1\"", "\"id2\"]"]
-          const joined = raw.join(","); // "[\"High\",\"id1\",\"id2\"]"
+          const joined = raw.join(",");
           const trimmed = joined.trim();
 
           if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
             try {
-              const parsed = JSON.parse(trimmed); // ["High","id1","id2"]
+              const parsed = JSON.parse(trimmed);
               if (Array.isArray(parsed)) {
                 coverageArray = parsed;
               }
             } catch (e) {
-              // fallback: treat each array item as string and strip quotes
               coverageArray = raw.map((c) => String(c));
             }
           } else {
             coverageArray = raw.map((c) => String(c));
           }
         } else if (typeof raw === "string") {
-          // Either a CSV "High,id1,id2" or a JSON string '["High","id1","id2"]'
           const trimmed = raw.trim();
           if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
             try {
@@ -226,7 +224,6 @@ const IndustrialAreasPage = () => {
           }
         }
 
-        // Final normalisation: trim + drop empty
         const cleanedCoverage = coverageArray
           .map((c) => String(c).replace(/"/g, "").trim())
           .filter(Boolean);
@@ -239,7 +236,7 @@ const IndustrialAreasPage = () => {
           region: area.region,
           potential: area.potential,
           coverageMar25: area.coverageMar25 || area.coveragemar25 || "",
-          currentCoverage: cleanedCoverage, // <- important
+          currentCoverage: cleanedCoverage,
           focusArea: !!area.focusArea || !!area.focusarea,
           createdBy: area.createdBy || area.createdby,
           createdAt: area.createdAt || area.createdat,
@@ -258,7 +255,8 @@ const IndustrialAreasPage = () => {
   };
 
   const applyFilters = () => {
-    let filtered = [...areas];
+    // Read from accessible dataset instead of raw base array
+    let filtered = [...accessibleAreas];
 
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase();
@@ -490,8 +488,8 @@ const IndustrialAreasPage = () => {
       const assignedNames = (currentCoverage || [])
         .filter((id) => !["High", "Medium", "Low"].includes(id))
         .map((userId) => {
-          const user = allUsers.find((u) => u.id === userId);
-          return user ? user.name : userId;
+          const matchedUser = allUsers.find((u) => u.id === userId);
+          return matchedUser ? matchedUser.name : userId;
         })
         .join("|");
 
@@ -502,7 +500,7 @@ const IndustrialAreasPage = () => {
         area.region,
         area.potential,
         coverageStr,
-        "", // industry types placeholder (not in DB now)
+        "",
         assignedNames,
       ];
     });
@@ -706,10 +704,10 @@ const IndustrialAreasPage = () => {
 
     return cleanIds
       .map((id) => {
-        const user = allUsers.find(
+        const matchedUser = allUsers.find(
           (u) => String(u.id).toLowerCase() === id.toLowerCase(),
         );
-        return user ? user.name : "Unknown User";
+        return matchedUser ? matchedUser.name : "Unknown User";
       })
       .join(", ");
   };
@@ -1104,7 +1102,7 @@ const IndustrialAreasPage = () => {
           <div className="flex items-center justify-between pt-2 border-t border-gray-200 text-sm text-gray-600">
             <div className="flex items-center space-x-4">
               <span>
-                Showing {filteredAreas.length} of {areas.length} areas
+                Showing {filteredAreas.length} of {accessibleAreas.length} areas
               </span>
               {(filters.search ||
                 filters.state ||
@@ -1496,7 +1494,7 @@ const IndustrialAreasPage = () => {
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 p-6">
               <button
                 onClick={handleCancel}
                 className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"

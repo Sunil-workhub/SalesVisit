@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import SalesVisitService from "../../services/salesVisit/SalesVisitService";
@@ -21,6 +27,7 @@ import {
   Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronDown,
 } from "lucide-react";
 
 const iconMap = {
@@ -72,15 +79,12 @@ function AppLayout({ children }) {
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
   const [loadingFlags, setLoadingFlags] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+
+  const profileMenuRef = useRef(null);
 
   const isManagement = loggedInUser?.role === "management";
   const currentPath = location.pathname;
-
-  const extractResponseStatus = (response) =>
-    response?.status ||
-    response?.Status ||
-    response?.data?.status ||
-    response?.data?.Status;
 
   const extractResponseData = (response) =>
     response?.data?.data ||
@@ -153,7 +157,22 @@ function AppLayout({ children }) {
 
   useEffect(() => {
     setSidebarOpen(false);
+    setProfileMenuOpen(false);
   }, [currentPath]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(event.target)
+      ) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const canShowMenuItem = useCallback(
     (item) => {
@@ -225,6 +244,13 @@ function AppLayout({ children }) {
     if (path === "/") return currentPath === "/";
     return currentPath === path;
   };
+
+  const displayName =
+    loggedInUser?.name ||
+    `${loggedInUser?.first_name || ""} ${loggedInUser?.last_name || ""}`.trim() ||
+    "User";
+
+  const displayEmail = loggedInUser?.emp_email || loggedInUser?.email || "";
 
   const NavItem = ({ item }) => {
     const Icon = item.icon;
@@ -427,13 +453,64 @@ function AppLayout({ children }) {
                   </button>
                 )}
 
-                <button
-                  onClick={handleSignOut}
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm hover:bg-slate-50 hover:text-rose-600"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span className="hidden sm:inline">Sign out</span>
-                </button>
+                <div className="relative" ref={profileMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setProfileMenuOpen((prev) => !prev)}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eef4ff] text-[#2d5bce] font-semibold">
+                      {displayName?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+
+                    <div className="hidden sm:block text-left">
+                      <p className="max-w-[160px] truncate text-sm font-semibold text-slate-900">
+                        {displayName}
+                      </p>
+                      {/* <p className="max-w-[160px] truncate text-xs text-slate-500">
+                        {displayEmail || "Logged in user"}
+                      </p> */}
+                    </div>
+
+                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                  </button>
+
+                  {profileMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+                      <div className="border-b border-slate-100 px-4 py-3">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {displayName}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500 break-all">
+                          {displayEmail || "No email available"}
+                        </p>
+                      </div>
+
+                      <div className="p-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProfileMenuOpen(false);
+                            navigate("/profile");
+                          }}
+                          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          <User className="h-4 w-4 text-slate-500" />
+                          <span>Profile</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSignOut}
+                          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          <span>Sign out</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </header>

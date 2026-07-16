@@ -14,6 +14,9 @@ import {
   Clock3,
   CalendarDays,
   Layers3,
+  Eye,
+  EyeOff,
+  Info,
 } from "lucide-react";
 import SalesVisitService from "../../services/salesVisit/SalesVisitService";
 
@@ -89,6 +92,9 @@ const DEFAULT_DASHBOARD = {
   },
 };
 
+// Financial Year Month Order: April (4) to March (3)
+const FY_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+
 const SalesVisitDashboardPage = () => {
   const [selectedTab, setSelectedTab] = useState("month");
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -96,6 +102,21 @@ const SalesVisitDashboardPage = () => {
   const [dashboardData, setDashboardData] = useState(DEFAULT_DASHBOARD);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showNoDataAreas, setShowNoDataAreas] = useState(false);
+
+  // Generate a dynamic list of years for selection
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+
+  // Helper to determine the Financial Year string (e.g., FY 2025-26) based on selectedMonth key
+  const getDisplayFinancialYear = (monthKey) => {
+    if (!monthKey) return "";
+    const [year, month] = monthKey.split("-").map(Number);
+    if (month >= 1 && month <= 3) {
+      return `FY ${year - 1}-${String(year).slice(-2)}`;
+    }
+    return `FY ${year}-${String(year + 1).slice(-2)}`;
+  };
 
   useEffect(() => {
     const now = new Date();
@@ -118,9 +139,9 @@ const SalesVisitDashboardPage = () => {
 
       return {
         summary: {
-          totalPlanned: summary.totalVisits || 0,
+          totalPlanned: summary.plannedVisits || 0,
           completed: summary.completedVisits || 0,
-          pending: summary.plannedVisits || 0,
+          pending: summary.pendingPlans || 0,
           visitDays: summary.uniqueVisitDays || 0,
         },
         visitTypes: (section.visitTypes || []).map((item) => ({
@@ -188,21 +209,28 @@ const SalesVisitDashboardPage = () => {
 
   const navigateMonth = (direction) => {
     const [year, month] = selectedMonth.split("-").map(Number);
+    const currentIdx = FY_MONTHS.indexOf(month);
+    let newMonthIdx = direction === "next" ? currentIdx + 1 : currentIdx - 1;
     let newYear = year;
-    let newMonth = month;
 
-    if (direction === "next") {
-      newMonth += 1;
-      if (newMonth > 12) {
-        newMonth = 1;
-        newYear += 1;
-      }
-    } else {
-      newMonth -= 1;
-      if (newMonth < 1) {
-        newMonth = 12;
-        newYear -= 1;
-      }
+    if (newMonthIdx > 11) {
+      newMonthIdx = 0;
+      newYear += 1;
+    } else if (newMonthIdx < 0) {
+      newMonthIdx = 11;
+      newYear -= 1;
+    }
+
+    const newMonth = FY_MONTHS[newMonthIdx];
+
+    if (month === 12 && newMonth === 1) {
+      newYear = year + 1;
+    } else if (month === 1 && newMonth === 12) {
+      newYear = year - 1;
+    } else if (month === 4 && newMonth === 3) {
+      newYear = year;
+    } else if (month === 3 && newMonth === 4) {
+      newYear = year;
     }
 
     const monthKey = `${newYear}-${String(newMonth).padStart(2, "0")}`;
@@ -217,9 +245,27 @@ const SalesVisitDashboardPage = () => {
     return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   };
 
+  const handleYearChange = (e) => {
+    const targetYear = parseInt(e.target.value, 10);
+    const [, currentMonthStr] = selectedMonth.split("-");
+    setSelectedYear(targetYear);
+    setSelectedMonth(`${targetYear}-${currentMonthStr}`);
+  };
+
   const activeData =
     selectedTab === "month" ? dashboardData.monthly : dashboardData.ytd;
   const summaryPrefix = selectedTab === "month" ? "" : "YTD ";
+
+  const totalCompletedVisits =
+    activeData.visitTypes?.reduce((acc, item) => acc + (item.actual || 0), 0) ||
+    0;
+
+  const areasWithData =
+    activeData?.myFocusAreas?.filter((area) => (area.totalVisits || 0) > 0) ||
+    [];
+  const areasWithoutData =
+    activeData?.myFocusAreas?.filter((area) => (area.totalVisits || 0) === 0) ||
+    [];
 
   if (loading) {
     return (
@@ -244,23 +290,32 @@ const SalesVisitDashboardPage = () => {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.10),_transparent_35%),radial-gradient(circle_at_left,_rgba(59,130,246,0.06),_transparent_30%)]" />
             <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                {/* <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                  <Activity className="h-3.5 w-3.5" />
-                  Sales visit performance dashboard
-                </div> */}
                 <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
                   My Dashboard
                 </h1>
-                {/* <p className="mt-2 text-sm md:text-base text-slate-500">
-                  Personal monthly and year-wise performance summary
-                </p> */}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                {/* <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  <User className="h-4 w-4 text-slate-500" />
-                  <span className="font-medium">Personal dashboard</span>
-                </div> */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="year-select"
+                    className="text-sm font-medium text-slate-600"
+                  >
+                    Financial Year:
+                  </label>
+                  <select
+                    id="year-select"
+                    value={selectedYear}
+                    onChange={handleYearChange}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-slate-400"
+                  >
+                    {yearOptions.map((year) => (
+                      <option key={year} value={year}>
+                        FY {year}-{String(year + 1).slice(-2)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1.5 shadow-inner">
                   <button
@@ -284,7 +339,7 @@ const SalesVisitDashboardPage = () => {
                     onClick={() => setSelectedTab("ytd")}
                   >
                     <TrendingUp className="h-4 w-4" />
-                    Year Wise
+                    YTD
                   </button>
                 </div>
               </div>
@@ -311,11 +366,16 @@ const SalesVisitDashboardPage = () => {
               <h2 className="text-lg md:text-xl font-semibold tracking-tight text-slate-900">
                 {formatMonth(selectedMonth)}
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {selectedTab === "month"
-                  ? "Monthly summary"
-                  : "YTD summary till selected month"}
-              </p>
+              <div className="mt-1 flex flex-col items-center gap-1">
+                {/* <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
+                  Duration View: {getDisplayFinancialYear(selectedMonth)}
+                </span> */}
+                <p className="text-xs text-slate-400">
+                  {selectedTab === "month"
+                    ? "Monthly summary (Financial Calendar)"
+                    : "YTD summary till selected month"}
+                </p>
+              </div>
             </div>
 
             <button
@@ -357,51 +417,72 @@ const SalesVisitDashboardPage = () => {
             <SectionCard title={`${summaryPrefix}Visit Types`} icon={BarChart3}>
               {activeData.visitTypes?.length ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                  {activeData.visitTypes.map((item, index) => (
-                    <div
-                      key={index}
-                      className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-slate-600">
-                          {item.label}
-                        </p>
-                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 border border-slate-200">
-                          {item.completionRate}%
-                        </span>
-                      </div>
+                  {activeData.visitTypes.map((item, index) => {
+                    const sharePercentage =
+                      totalCompletedVisits > 0
+                        ? ((item.actual / totalCompletedVisits) * 100).toFixed(
+                            1,
+                          )
+                        : "0.0";
 
-                      <div className="mt-4 space-y-3">
-                        <div className="flex items-end justify-between">
-                          <span className="text-sm text-slate-500">
-                            Planned
-                          </span>
-                          <span className="text-xl font-semibold text-slate-900">
-                            {item.count}
-                          </span>
-                        </div>
-                        <div className="flex items-end justify-between">
-                          <span className="text-sm text-slate-500">
-                            Completed
-                          </span>
-                          <span className="text-xl font-semibold text-slate-900">
-                            {item.actual}
-                          </span>
-                        </div>
-                      </div>
+                    return (
+                      <div
+                        key={index}
+                        className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-bold text-slate-700 truncate">
+                              {item.label}
+                            </p>
+                            <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 border border-slate-200">
+                              Comp: {item.completionRate}%
+                            </span>
+                          </div>
 
-                      <div className="mt-4">
-                        <div className="h-2.5 rounded-full bg-slate-200">
-                          <div
-                            className="h-2.5 rounded-full bg-slate-900"
-                            style={{
-                              width: `${Math.min(item.completionRate || 0, 100)}%`,
-                            }}
-                          />
+                          <div className="mt-4 space-y-2">
+                            <div className="flex items-end justify-between">
+                              <span className="text-xs text-slate-500">
+                                Planned
+                              </span>
+                              <span className="text-lg font-semibold text-slate-900">
+                                {item.planned}
+                              </span>
+                            </div>
+                            <div className="flex items-end justify-between">
+                              <span className="text-xs text-slate-500">
+                                Completed
+                              </span>
+                              <span className="text-lg font-semibold text-slate-900">
+                                {item.actual}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-slate-200/60">
+                          <div className="flex items-center justify-between text-xs font-medium">
+                            <span className="text-slate-500">
+                              Share of Completed Visits:
+                            </span>
+                            <span className="text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
+                              {sharePercentage}%
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <div className="h-2 rounded-full bg-slate-200">
+                              <div
+                                className="h-2 rounded-full bg-indigo-600"
+                                style={{
+                                  width: `${Math.min(parseFloat(sharePercentage), 100)}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <EmptyState text="No visit type data available for this period." />
@@ -490,23 +571,35 @@ const SalesVisitDashboardPage = () => {
                 </div>
               </SectionCard>
 
-              <SectionCard title="Coverage Depth Analysis" icon={Building}>
+              {/* FIX: Replaced with DensityMetricBox layouts from team dashboard matching configuration rules */}
+              <SectionCard
+                title="Coverage Density Depth Matrix"
+                icon={Building}
+              >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <MetricBox
+                  <DensityMetricBox
                     label="Deep Coverage"
+                    hint={selectedTab === "month" ? "5+ visits" : "8+ visits"}
                     value={activeData?.coverageDepthAnalysis?.deepCoverage}
+                    tone="emerald"
                   />
-                  <MetricBox
+                  <DensityMetricBox
                     label="Moderate Coverage"
+                    hint={selectedTab === "month" ? "2-4 visits" : "3-7 visits"}
                     value={activeData?.coverageDepthAnalysis?.moderateCoverage}
+                    tone="blue"
                   />
-                  <MetricBox
+                  <DensityMetricBox
                     label="Light Coverage"
+                    hint={selectedTab === "month" ? "1 visit" : "1-2 visits"}
                     value={activeData?.coverageDepthAnalysis?.lightCoverage}
+                    tone="amber"
                   />
-                  <MetricBox
+                  <DensityMetricBox
                     label="No Coverage"
+                    hint="0 active visits"
                     value={activeData?.coverageDepthAnalysis?.noCoverage}
+                    tone="rose"
                   />
                 </div>
               </SectionCard>
@@ -539,57 +632,57 @@ const SalesVisitDashboardPage = () => {
 
             <SectionCard title="My Focus Areas" icon={Building}>
               {activeData?.myFocusAreas?.length ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {activeData?.myFocusAreas?.map((area, index) => (
-                    <div
-                      key={index}
-                      className="group rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="min-w-0">
-                          <h4 className="font-semibold text-slate-900 truncate">
-                            {area.areaName}
-                          </h4>
-                          <p className="text-sm text-slate-500">
-                            {area.city}, {area.state}
-                          </p>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 text-xs font-semibold">
-                          {area.potential}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Visits</span>
-                          <span className="font-semibold text-slate-900">
-                            {area.totalVisits}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Completed</span>
-                          <span className="font-semibold text-emerald-600">
-                            {area.completedVisits}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Coverage</span>
-                          <span className="font-semibold text-violet-600">
-                            {area.coverageRate}%
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 h-2.5 rounded-full bg-slate-200 overflow-hidden">
-                        <div
-                          className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-sky-500"
-                          style={{
-                            width: `${Math.min(area.coverageRate || 0, 100)}%`,
-                          }}
-                        />
-                      </div>
+                <div className="space-y-6">
+                  {areasWithData.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {areasWithData.map((area, index) => (
+                        <FocusAreaCard key={`active-${index}`} area={area} />
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <p className="text-sm text-slate-500 italic">
+                      No active focus areas with visit metrics found.
+                    </p>
+                  )}
+
+                  {areasWithoutData.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <button
+                        onClick={() => setShowNoDataAreas(!showNoDataAreas)}
+                        className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm border border-slate-200 transition hover:bg-slate-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>
+                            Areas Without Active Data ({areasWithoutData.length}
+                            )
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                          {showNoDataAreas ? (
+                            <>
+                              <EyeOff className="h-4 w-4" /> Hide Section
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="h-4 w-4" /> View Section
+                            </>
+                          )}
+                        </div>
+                      </button>
+
+                      {showNoDataAreas && (
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 transition-all duration-300">
+                          {areasWithoutData.map((area, index) => (
+                            <FocusAreaCard
+                              key={`empty-${index}`}
+                              area={area}
+                              opacityClass="opacity-75"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <EmptyState text="No focus areas available for this period." />
@@ -601,6 +694,54 @@ const SalesVisitDashboardPage = () => {
     </div>
   );
 };
+
+const FocusAreaCard = ({ area, opacityClass = "" }) => (
+  <div
+    className={`group rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${opacityClass}`}
+  >
+    <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="min-w-0">
+        <h4 className="font-semibold text-slate-900 truncate">
+          {area.areaName}
+        </h4>
+        <p className="text-sm text-slate-500">
+          {area.city}, {area.state}
+        </p>
+      </div>
+      <span className="shrink-0 rounded-full bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 text-xs font-semibold">
+        {area.potential}
+      </span>
+    </div>
+
+    <div className="space-y-3 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-slate-500">Visits</span>
+        <span className="font-semibold text-slate-900">{area.totalVisits}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-slate-500">Completed</span>
+        <span className="font-semibold text-emerald-600">
+          {area.completedVisits}
+        </span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-slate-500">Coverage</span>
+        <span className="font-semibold text-violet-600">
+          {area.coverageRate}%
+        </span>
+      </div>
+    </div>
+
+    <div className="mt-4 h-2.5 rounded-full bg-slate-200 overflow-hidden">
+      <div
+        className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-sky-500"
+        style={{
+          width: `${Math.min(area.coverageRate || 0, 100)}%`,
+        }}
+      />
+    </div>
+  </div>
+);
 
 const SummaryCard = ({ title, value, tone = "slate", icon: Icon }) => {
   const toneMap = {
@@ -661,6 +802,29 @@ const MetricBox = ({ label, value }) => (
     </p>
   </div>
 );
+
+// Added DensityMetricBox sub-component from team dashboard
+const DensityMetricBox = ({ label, hint, value, tone = "blue" }) => {
+  const configurationMap = {
+    emerald:
+      "bg-emerald-50/60 border-emerald-200 text-emerald-800 value-emerald-600",
+    blue: "bg-blue-50/60 border-blue-200 text-blue-800 value-blue-600",
+    amber: "bg-amber-50/60 border-amber-200 text-amber-800 value-amber-600",
+    rose: "bg-rose-50/60 border-rose-200 text-rose-800 value-rose-600",
+  };
+  const styles = configurationMap[tone] || configurationMap.blue;
+  const valColor = styles.split(" ")[3].replace("value-", "text-");
+
+  return (
+    <div
+      className={`rounded-2xl border p-4 text-center shadow-sm ${styles.split(" ").slice(0, 3).join(" ")}`}
+    >
+      <p className={`text-2xl font-bold ${valColor}`}>{value}</p>
+      <p className="text-sm font-bold mt-1 text-slate-800">{label}</p>
+      <p className="text-xs font-medium text-slate-500 mt-0.5">{hint}</p>
+    </div>
+  );
+};
 
 const SectionCard = ({ title, icon: Icon, children }) => (
   <div className="rounded-[24px] border border-slate-200 bg-white p-5 md:p-6 shadow-sm">

@@ -631,7 +631,7 @@ const MonthlyPlanPage = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {canEdit && (
+              {/* {canEdit && (
                 <>
                   <button
                     onClick={downloadTemplate}
@@ -648,7 +648,7 @@ const MonthlyPlanPage = () => {
                     <input type="file" accept=".csv" className="hidden" />
                   </label>
                 </>
-              )}
+              )} */}
 
               {currentPlan &&
                 canEdit &&
